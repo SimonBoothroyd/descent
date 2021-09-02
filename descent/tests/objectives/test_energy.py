@@ -4,24 +4,22 @@ from typing import Tuple
 import numpy
 import pytest
 import torch
-from openff.interchange.components.interchange import Interchange
-from openff.interchange.components.mdtraj import OFFBioTop
-from openff.interchange.components.potentials import Potential
-from openff.interchange.components.smirnoff import SMIRNOFFBondHandler
-from openff.interchange.models import PotentialKey, TopologyKey
+from openff.interchange.models import PotentialKey
 from openff.toolkit.topology import Molecule
 from openff.toolkit.typing.engines.smirnoff import ForceField
-from openff.units import unit
 from smirnoffee.geometry.internal import detect_internal_coordinates
 
 from descent import metrics, transforms
 from descent.objectives.energy import EnergyObjective
 from descent.tests.geometric import geometric_project_derivatives
 from descent.tests.mocking.qcdata import mock_optimization_result_collection
+from descent.tests.mocking.systems import generate_mock_hcl_system
 
 
 @pytest.fixture()
 def mock_hcl_conformers() -> torch.Tensor:
+    """Creates two mock conformers for HCl - one with a bond length of 1 A and another
+    with a bond length of 2 A"""
 
     return torch.tensor(
         [[[-0.5, 0.0, 0.0], [0.5, 0.0, 0.0]], [[-1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]]
@@ -30,39 +28,7 @@ def mock_hcl_conformers() -> torch.Tensor:
 
 @pytest.fixture()
 def mock_hcl_system():
-    """Creates an interchange object for HCl that contains a single bond parameter with
-    l=1 A and k = 2 kJ / mol
-    """
-
-    system = Interchange()
-
-    system.topology = OFFBioTop()
-    system.topology.copy_initializer(
-        Molecule.from_mapped_smiles("[H:1][Cl:2]").to_topology()
-    )
-
-    system.add_handler(
-        "Bonds",
-        SMIRNOFFBondHandler(
-            slot_map={
-                TopologyKey(atom_indices=(0, 1)): PotentialKey(
-                    id="[#1:1]-[#17:2]", associated_handler="Bonds"
-                )
-            },
-            potentials={
-                PotentialKey(
-                    id="[#1:1]-[#17:2]", associated_handler="Bonds"
-                ): Potential(
-                    parameters={
-                        "k": 2.0 * unit.kilojoule / unit.mole / unit.angstrom ** 2,
-                        "length": 1.0 * unit.angstrom,
-                    }
-                )
-            },
-        ),
-    )
-
-    return system
+    return generate_mock_hcl_system()
 
 
 @pytest.fixture()

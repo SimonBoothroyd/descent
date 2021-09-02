@@ -6,7 +6,11 @@ import torch
 LossMetric = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
 
-def mse(dim: Union[int, Tuple[int, ...]] = 0) -> LossMetric:
+def mse(dim: Union[int, Tuple[int, ...]] = None) -> LossMetric:
+
+    if dim is None:
+        dim = ()
+
     def _mse(input_tensor: torch.Tensor, reference_tensor: torch.Tensor):
         return (input_tensor - reference_tensor).square().mean(dim=dim)
 

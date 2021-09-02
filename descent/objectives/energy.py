@@ -356,9 +356,11 @@ class EnergyObjective(ObjectiveContribution):
                 for i, atom_index in enumerate(atom_indices):
                     b_matrix_gradient[row_index, atom_index, :, :, :] = row_hessian[i]
 
-            b_matrix_gradient = b_matrix_gradient.reshape(
-                b_matrix.shape[0], b_matrix.shape[1], b_matrix.shape[1]
-            )
+            if len(b_matrix_gradient) > 0:
+
+                b_matrix_gradient = b_matrix_gradient.reshape(
+                    b_matrix.shape[0], b_matrix.shape[1], b_matrix.shape[1]
+                )
 
             # rcond was selected here to match geomeTRIC = 0.9.7.2
             g_inverse = torch.pinverse(b_matrix @ b_matrix.T, rcond=1.0e-6)
@@ -540,7 +542,7 @@ class EnergyObjective(ObjectiveContribution):
                 continue
 
             (mm_gradient,) = torch.autograd.grad(
-                mm_energy, conformer, create_graph=compute_hessians
+                mm_energy, conformer, create_graph=compute_gradients or compute_hessians
             )
             mm_gradients.append(mm_gradient)
 
@@ -771,9 +773,14 @@ class EnergyObjective(ObjectiveContribution):
                 (
                     torch.from_numpy(conformer).type(torch.float32),
                     torch.tensor([qc_record.get_final_energy() * _HARTREE_TO_KJ_MOL]),
-                    qc_gradients.get(
-                        (qc_record.client.address, qc_record.final_molecule), None
-                    ),
+                    # There should always be a gradient associated with the record
+                    # and so we choose to raise a key error when the record is missing
+                    # rather than skipping the entry.
+                    None
+                    if not include_gradients
+                    else qc_gradients[
+                        (qc_record.client.address, qc_record.final_molecule)
+                    ],
                     qc_hessians.get(
                         (qc_record.client.address, qc_record.final_molecule), None
                     ),
