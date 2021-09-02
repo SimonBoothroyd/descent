@@ -1,9 +1,8 @@
 from typing import Callable, Union
 
 import numpy
-from openff.toolkit.utils import string_to_unit
+from openff.toolkit.utils import string_to_unit, unit_to_string
 from openff.units import unit
-from openff.units.simtk import unit_to_string
 from simtk import unit as simtk_unit
 
 

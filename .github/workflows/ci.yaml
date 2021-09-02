@@ -54,9 +54,9 @@ jobs:
       run: |
         pytest -v --cov=descent --cov-report=xml --color=yes descent/tests/
 
-#    - name: CodeCov
-#      uses: codecov/codecov-action@v1.5.0
-#      with:
-#        file: ./coverage.xml
-#        flags: unittests
-#        name: codecov-${{ matrix.os }}-py${{ matrix.python-version }}
+    - name: CodeCov
+      uses: codecov/codecov-action@v1.5.0
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-${{ matrix.os }}-py${{ matrix.python-version }}

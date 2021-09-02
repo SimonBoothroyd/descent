@@ -1,5 +1,5 @@
 import torch
-from openff.system.models import PotentialKey
+from openff.interchange.models import PotentialKey
 from openff.toolkit.typing.engines.smirnoff import ForceField
 from simtk import unit as simtk_unit
 
