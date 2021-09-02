@@ -2,7 +2,7 @@ import copy
 from typing import List, Tuple
 
 import torch
-from openff.system.models import PotentialKey
+from openff.interchange.models import PotentialKey
 from openff.toolkit.typing.engines.smirnoff import ForceField
 from openff.toolkit.utils import string_to_unit
 from smirnoffee.smirnoff import _DEFAULT_UNITS
