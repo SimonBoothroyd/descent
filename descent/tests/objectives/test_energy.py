@@ -104,12 +104,16 @@ def test_parameter_ids(mock_hcl_conformers, mock_hcl_system):
     term = EnergyObjective(
         mock_hcl_system,
         mock_hcl_conformers,
-        reference_energies=torch.zeros((len(mock_hcl_conformers), 1))
+        reference_energies=torch.zeros((len(mock_hcl_conformers), 1)),
     )
 
     assert {*term.parameter_ids} == {
         ("Bonds", PotentialKey(id="[#1:1]-[#17:2]", associated_handler="Bonds"), "k"),
-        ("Bonds", PotentialKey(id="[#1:1]-[#17:2]", associated_handler="Bonds"), "length"),
+        (
+            "Bonds",
+            PotentialKey(id="[#1:1]-[#17:2]", associated_handler="Bonds"),
+            "length",
+        ),
     }
 
 

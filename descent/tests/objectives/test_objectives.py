@@ -8,7 +8,6 @@ def test_call(monkeypatch):
     evaluate_called = False
 
     class DummyObjective(ObjectiveContribution):
-
         @property
         def parameter_ids(self):
             return []
