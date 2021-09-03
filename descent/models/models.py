@@ -11,4 +11,4 @@ class ParameterizationModel(Protocol):
     """The interface the parameterization models must implement."""
 
     def forward(self, graph: Any) -> VectorizedSystem:
-        ...
+        """Outputs a vectorised view of a parameterized molecule."""

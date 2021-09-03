@@ -8,6 +8,7 @@ from smirnoffee.smirnoff import vectorize_system
 
 from descent.models import ParameterizationModel
 from descent.models.smirnoff import SMIRNOFFModel
+from descent.tests import is_close
 
 
 @pytest.fixture()
@@ -150,3 +151,22 @@ def test_model_forward_fixed_handler(mock_force_field):
     assert len(output_system[("Angles", "k/2*(theta-angle)**2")][0]) == 1
     assert len(output_system[("Angles", "k/2*(theta-angle)**2")][1]) == 1
     assert len(output_system[("Angles", "k/2*(theta-angle)**2")][2]) == 1
+
+
+def test_model_to_force_field(mock_force_field):
+    """Test that forward works for the case where a system contains a handler that
+    contains no parameters being trained."""
+
+    from simtk import unit as simtk_unit
+
+    model = SMIRNOFFModel([("Bonds", "[#1:1]-[#17:2]", "length")], mock_force_field)
+    model.parameter_delta = torch.nn.Parameter(
+        model.parameter_delta + torch.tensor([1.0]), requires_grad=True
+    )
+
+    output_force_field = model.to_force_field()
+
+    assert is_close(
+        output_force_field["Bonds"].parameters["[#1:1]-[#17:2]"].length,
+        5.0 * simtk_unit.angstrom,
+    )
