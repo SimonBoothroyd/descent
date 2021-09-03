@@ -1,9 +1,9 @@
 import pytest
 import torch
-from openff.interchange.models import PotentialKey
 from openff.units import unit
 
 from descent import metrics, transforms
+from descent.models.smirnoff import SMIRNOFFModel
 from descent.objectives import ObjectiveContribution
 from descent.objectives.energy import EnergyObjective
 from descent.tests.mocking.systems import generate_mock_hcl_system
@@ -17,13 +17,13 @@ def train_parameters(
     verbose: bool = True,
 ) -> torch.Tensor:
 
-    parameter_delta = torch.zeros(len(parameter_delta_ids), requires_grad=True)
+    model = SMIRNOFFModel(parameter_delta_ids, None)
 
-    optimizer = torch.optim.Adam([parameter_delta], lr=learning_rate)
+    optimizer = torch.optim.Adam([model.parameter_delta], lr=learning_rate)
 
     for epoch in range(n_epochs):
 
-        loss = loss_function(parameter_delta, parameter_delta_ids)
+        loss = loss_function(model)
 
         loss.backward()
 
@@ -33,7 +33,7 @@ def train_parameters(
         if verbose and (epoch % 20 == 0 or epoch == n_epochs - 1):
             print(f"Epoch {epoch}: loss={loss.item()}")
 
-    return parameter_delta
+    return model.parameter_delta
 
 
 @pytest.mark.parametrize(
@@ -65,7 +65,7 @@ def test_energies_only(transform, metric):
 
     actual_parameter_delta = train_parameters(
         loss_function,
-        [("Bonds", PotentialKey(id="[#1:1]-[#17:2]", associated_handler="Bonds"), "k")],
+        [("Bonds", "[#1:1]-[#17:2]", "k")],
         learning_rate=0.1,
     )
     expected_parameter_delta = torch.tensor([-2.5])
@@ -108,7 +108,7 @@ def test_forces_only(transform, metric, coordinate_system):
 
     actual_parameter_delta = train_parameters(
         loss_function,
-        [("Bonds", PotentialKey(id="[#1:1]-[#17:2]", associated_handler="Bonds"), "k")],
+        [("Bonds", "[#1:1]-[#17:2]", "k")],
         learning_rate=0.1,
     )
     expected_parameter_delta = torch.tensor([-2.5])
@@ -169,7 +169,7 @@ def test_energies_and_forces(
 
     actual_parameter_delta = train_parameters(
         loss_function,
-        [("Bonds", PotentialKey(id="[#1:1]-[#17:2]", associated_handler="Bonds"), "k")],
+        [("Bonds", "[#1:1]-[#17:2]", "k")],
         learning_rate=0.1,
     )
     expected_parameter_delta = torch.tensor([-2.5])

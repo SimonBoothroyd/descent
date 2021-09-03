@@ -10,6 +10,7 @@ from openff.toolkit.typing.engines.smirnoff import ForceField
 from smirnoffee.geometry.internal import detect_internal_coordinates
 
 from descent import metrics, transforms
+from descent.models.smirnoff import SMIRNOFFModel
 from descent.objectives.energy import EnergyObjective
 from descent.tests.geometric import geometric_project_derivatives
 from descent.tests.mocking.qcdata import mock_optimization_result_collection
@@ -150,7 +151,7 @@ def test_evaluate_mm_energies(
     )
 
     mm_energies, mm_gradients, mm_hessians = energy_objective._evaluate_mm_energies(
-        None, None, compute_gradients, compute_hessians
+        SMIRNOFFModel([], ForceField), compute_gradients, compute_hessians
     )
 
     expected_energies, expected_gradients, expected_hessians = mock_hcl_mm_values
@@ -184,7 +185,7 @@ def test_evaluate_energies(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_val
         energy_metric=metrics.mse(),
     )
 
-    loss = energy_objective.evaluate(None, None)
+    loss = energy_objective.evaluate(SMIRNOFFModel([], ForceField))
 
     assert loss.shape == (1,)
     assert torch.isclose(loss, expected_scale.square())
@@ -206,7 +207,7 @@ def test_evaluate_gradients(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_va
         gradient_metric=metrics.mse(()),
     )
 
-    loss = energy_objective.evaluate(None, None)
+    loss = energy_objective.evaluate(SMIRNOFFModel([], ForceField))
 
     assert loss.shape == (1,)
     assert torch.isclose(loss, expected_scale.square())
@@ -229,7 +230,7 @@ def test_evaluate_hessians(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_val
         hessian_metric=metrics.mse(()),
     )
 
-    loss = energy_objective.evaluate(None, None)
+    loss = energy_objective.evaluate(SMIRNOFFModel([], ForceField))
 
     assert loss.shape == (1,)
     assert torch.isclose(loss, expected_scale.square())

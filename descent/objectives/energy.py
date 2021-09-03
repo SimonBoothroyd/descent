@@ -19,6 +19,7 @@ from typing_extensions import Literal
 
 from descent import metrics, transforms
 from descent.metrics import LossMetric
+from descent.models import ParameterizationModel
 from descent.objectives import ObjectiveContribution
 from descent.transforms import LossTransform
 
@@ -219,7 +220,7 @@ class EnergyObjective(ObjectiveContribution):
             len(reference_tensor) == n_conformers
             for reference_tensor in reference_tensors
         ), (
-            "the number of conformers and reference eneriges / "
+            "the number of conformers and reference energies / "
             "gradients / hessians must match"
         )
 
@@ -509,8 +510,7 @@ class EnergyObjective(ObjectiveContribution):
 
     def _evaluate_mm_energies(
         self,
-        parameter_delta: Optional[torch.Tensor],
-        parameter_delta_ids: Optional[List[Tuple[str, PotentialKey, str]]],
+        model: ParameterizationModel,
         compute_gradients: bool = False,
         compute_hessians: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -518,13 +518,11 @@ class EnergyObjective(ObjectiveContribution):
         associated with this term.
 
         Args:
-            parameter_delta: An optional tensor of values to perturb the assigned
-                parameters by before evaluating the potential energy.
-            parameter_delta_ids: An optional list of ids associated with the
-                ``parameter_delta`` tensor which is used to identify which parameter
-                delta matches which assigned parameter.
+            model: The model that will return vectorized view of a parameterised
+                molecule.
         """
 
+        vectorized_system = model.forward(self._system)
         conformers = self._conformers.detach().clone().requires_grad_()
 
         mm_energies, mm_gradients, mm_hessians = [], [], []
@@ -532,10 +530,7 @@ class EnergyObjective(ObjectiveContribution):
         # TODO: replace with either vmap or vectorize smirnoffee
         for conformer in conformers:
 
-            mm_energy = evaluate_vectorized_system_energy(
-                self._system, conformer, parameter_delta, parameter_delta_ids
-            )
-
+            mm_energy = evaluate_vectorized_system_energy(vectorized_system, conformer)
             mm_energies.append(mm_energy)
 
             if not compute_gradients and not compute_hessians:
@@ -569,27 +564,10 @@ class EnergyObjective(ObjectiveContribution):
             None if not compute_hessians else torch.stack(mm_hessians),
         )
 
-    def evaluate(
-        self,
-        parameter_delta: Optional[torch.Tensor],
-        parameter_delta_ids: Optional[List[Tuple[str, PotentialKey, str]]],
-    ) -> torch.Tensor:
-        """Evaluate the objective at the given parameter offsets
-
-        Args:
-            parameter_delta: An optional tensor of values to perturb the assigned
-                parameters by before evaluating the potential energy.
-            parameter_delta_ids: An optional list of ids associated with the
-                ``parameter_delta`` tensor which is used to identify which parameter
-                delta matches which assigned parameter.
-
-        Returns:
-            The loss contribution of this term.
-        """
+    def evaluate(self, model: ParameterizationModel) -> torch.Tensor:
 
         mm_energies, mm_gradients, mm_hessians = self._evaluate_mm_energies(
-            parameter_delta,
-            parameter_delta_ids,
+            model,
             compute_gradients=(
                 self._reference_hessians is not None
                 or self._reference_gradients is not None

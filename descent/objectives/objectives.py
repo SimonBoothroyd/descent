@@ -1,8 +1,10 @@
 import abc
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import torch
 from openff.interchange.models import PotentialKey
+
+from descent.models import ParameterizationModel
 
 
 class ObjectiveContribution(abc.ABC):
@@ -17,40 +19,26 @@ class ObjectiveContribution(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def evaluate(
-        self,
-        parameter_delta: Optional[torch.Tensor],
-        parameter_delta_ids: Optional[List[Tuple[str, PotentialKey, str]]],
-    ) -> torch.Tensor:
-        """Evaluate the objective at the given parameter offsets
+    def evaluate(self, model: ParameterizationModel) -> torch.Tensor:
+        """Evaluate the objective using a specified model.
 
         Args:
-            parameter_delta: An optional tensor of values to perturb the assigned
-                parameters by before evaluating the potential energy.
-            parameter_delta_ids: An optional list of ids associated with the
-                ``parameter_delta`` tensor which is used to identify which parameter
-                delta matches which assigned parameter.
+            model: The model that will return vectorized view of a parameterised
+                molecule.
 
         Returns:
             The loss contribution of this term.
         """
         raise NotImplementedError()
 
-    def __call__(
-        self,
-        parameter_delta: Optional[torch.Tensor],
-        parameter_delta_ids: Optional[List[Tuple[str, PotentialKey, str]]],
-    ) -> torch.Tensor:
-        """Evaluate the objective at the given parameter offsets
+    def __call__(self, model: ParameterizationModel) -> torch.Tensor:
+        """Evaluate the objective using a specified model.
 
         Args:
-            parameter_delta: An optional tensor of values to perturb the assigned
-                parameters by before evaluating the potential energy.
-            parameter_delta_ids: An optional list of ids associated with the
-                ``parameter_delta`` tensor which is used to identify which parameter
-                delta matches which assigned parameter.
+            model: The model that will return vectorized view of a parameterised
+                molecule.
 
         Returns:
             The loss contribution of this term.
         """
-        return self.evaluate(parameter_delta, parameter_delta_ids)
+        return self.evaluate(model)
