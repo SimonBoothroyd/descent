@@ -33,6 +33,7 @@ class SMIRNOFFModel(torch.nn.Module):
         self,
         parameter_ids: List[Tuple[str, Union[str, PotentialKey], str]],
         initial_force_field: Optional[ForceField],
+        covariance_tensor: Optional[torch.Tensor] = None,
     ):
         """
         Args:
@@ -40,6 +41,21 @@ class SMIRNOFFModel(torch.nn.Module):
                 where each id should be a tuple of ``(handler_type, smirks, attribute)``.
             initial_force_field: The (optional) force field used to initially
                 parameterize the molecules of interest.
+            covariance_tensor: A tensor that will be used to transform an the
+                ``parameter_delta`` before it is used by the ``forward`` method such
+                that ``parameter_delta = self.covariance_tensor @ self.parameter_delta``.
+                It should have shape=``(n_parameter_ids, n_hidden)`` where ``n_hidden``
+                is the number of parameters prior to applying the transform.
+
+                This can be used to scale the values of parameters:
+
+                ``covariance_tensor = torch.eye(len(parameter_ids)) * 0.01``
+
+                or even define the covariance between parameters as in the case of BCCs:
+
+                ``covariance_tensor = torch.tensor([[1.0], [-1.0]])``
+
+                Usually ``n_hidden <= n_parameter_ids``.
         """
 
         super(SMIRNOFFModel, self).__init__()
@@ -75,8 +91,19 @@ class SMIRNOFFModel(torch.nn.Module):
 
             counter += len(handler_ids)
 
+        self._covariance_tensor = covariance_tensor
+
+        assert covariance_tensor is None or (
+            covariance_tensor.ndim == 2
+            and covariance_tensor.shape[0] == len(parameter_ids)
+        ), "the ``covariance_tensor`` must have shape=``(n_parameter_ids, n_hidden)``"
+
+        n_parameter_deltas = (
+            len(parameter_ids) if covariance_tensor is None else len(covariance_tensor)
+        )
+
         self.parameter_delta = torch.nn.Parameter(
-            torch.zeros(len(parameter_ids)).requires_grad_(), requires_grad=True
+            torch.zeros(n_parameter_deltas).requires_grad_(), requires_grad=True
         )
 
     def forward(self, graph: VectorizedSystem) -> VectorizedSystem:
@@ -86,6 +113,11 @@ class SMIRNOFFModel(torch.nn.Module):
 
         if len(self._parameter_delta_ids) == 0:
             return graph
+
+        parameter_delta = self.parameter_delta
+
+        if self._covariance_tensor:
+            parameter_delta = self._covariance_tensor @ parameter_delta
 
         output = {}
 
@@ -99,7 +131,7 @@ class SMIRNOFFModel(torch.nn.Module):
                 continue
 
             handler_delta_indices = self._parameter_delta_indices[handler_type]
-            handler_delta = self.parameter_delta[handler_delta_indices]
+            handler_delta = parameter_delta[handler_delta_indices]
 
             indices, handler_parameters, handler_parameter_ids = vectorized_handler
 
@@ -125,7 +157,9 @@ class SMIRNOFFModel(torch.nn.Module):
 
         return perturb_force_field(
             self._initial_force_field,
-            self.parameter_delta,
+            self.parameter_delta
+            if self._covariance_tensor is None
+            else self._covariance_tensor @ self.parameter_delta,
             [
                 (handler_type, smirks, attribute)
                 for handler_type, handler_ids in self._parameter_delta_ids.items()

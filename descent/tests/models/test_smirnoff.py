@@ -116,12 +116,17 @@ def test_model_forward_empty_input():
     assert model.forward({}) == {}
 
 
-def test_model_forward(mock_force_field):
+@pytest.mark.parametrize("covariance_tensor", [None, torch.tensor([[0.1]])])
+def test_model_forward(mock_force_field, covariance_tensor):
 
     molecule = Molecule.from_smiles("[H]Cl")
     system = Interchange.from_smirnoff(mock_force_field, molecule.to_topology())
 
-    model = SMIRNOFFModel([("Bonds", "[#1:1]-[#17:2]", "length")], None)
+    model = SMIRNOFFModel(
+        [("Bonds", "[#1:1]-[#17:2]", "length")],
+        None,
+        covariance_tensor=covariance_tensor,
+    )
     model.parameter_delta = torch.nn.Parameter(
         model.parameter_delta + torch.tensor([1.0]), requires_grad=True
     )
@@ -130,7 +135,10 @@ def test_model_forward(mock_force_field):
     output_system = model.forward(input_system)
 
     assert torch.isclose(
-        output_system[("Bonds", "k/2*(r-length)**2")][1][0, 1], torch.tensor(5.0)
+        output_system[("Bonds", "k/2*(r-length)**2")][1][0, 1],
+        torch.tensor(
+            4.0 + 1.0 * (1.0 if covariance_tensor is None else covariance_tensor)
+        ),
     )
 
 
@@ -153,13 +161,18 @@ def test_model_forward_fixed_handler(mock_force_field):
     assert len(output_system[("Angles", "k/2*(theta-angle)**2")][2]) == 1
 
 
-def test_model_to_force_field(mock_force_field):
+@pytest.mark.parametrize("covariance_tensor", [None, torch.tensor([[0.1]])])
+def test_model_to_force_field(mock_force_field, covariance_tensor):
     """Test that forward works for the case where a system contains a handler that
     contains no parameters being trained."""
 
     from simtk import unit as simtk_unit
 
-    model = SMIRNOFFModel([("Bonds", "[#1:1]-[#17:2]", "length")], mock_force_field)
+    model = SMIRNOFFModel(
+        [("Bonds", "[#1:1]-[#17:2]", "length")],
+        mock_force_field,
+        covariance_tensor=covariance_tensor,
+    )
     model.parameter_delta = torch.nn.Parameter(
         model.parameter_delta + torch.tensor([1.0]), requires_grad=True
     )
@@ -168,5 +181,6 @@ def test_model_to_force_field(mock_force_field):
 
     assert is_close(
         output_force_field["Bonds"].parameters["[#1:1]-[#17:2]"].length,
-        5.0 * simtk_unit.angstrom,
+        (4.0 + 1.0 * (1.0 if covariance_tensor is None else float(covariance_tensor)))
+        * simtk_unit.angstrom,
     )
