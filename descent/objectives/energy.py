@@ -690,7 +690,7 @@ class EnergyObjective(ObjectiveContribution):
         hessian_coordinate_system: Literal["cartesian", "ric"] = "cartesian",
     ) -> List["EnergyObjective"]:
         """Creates a list of energy objective contribution terms (one per unique
-        molecule) from a set of QC optimization results.
+        molecule) from the **final** structures a set of QC optimization results.
 
         Args:
             optimization_results: The collection of result records.
