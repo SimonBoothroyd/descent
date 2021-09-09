@@ -21,7 +21,7 @@ dependencies:
 
   - openff-qcsubmit >= 0.2.2
 
-  - smirnoffee
+  - smirnoffee >=0.0.1a2
   - pytorch >= 1.9.0
 
   - pydantic

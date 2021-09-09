@@ -266,7 +266,7 @@ class EnergyObjective(ObjectiveContribution):
             The B, inverse G and B' matrices with shapes of:
 
             * (n_conformers, n_internal_coords, n_atoms * 3)
-            * (n_conformers, n_internal_coords, n_atoms * 3)
+            * (n_conformers, n_internal_coords, n_internal_coords)
             * (n_conformers, n_internal_coords, n_atoms * 3, n_atoms * 3)
 
             respectively.
@@ -283,6 +283,8 @@ class EnergyObjective(ObjectiveContribution):
         g_inverses = []
 
         b_matrix_gradients = []
+
+        n_internal_degrees = 0
 
         for conformer in self._conformers:
 
@@ -370,6 +372,32 @@ class EnergyObjective(ObjectiveContribution):
             g_inverses.append(g_inverse.detach())
 
             b_matrix_gradients.append(b_matrix_gradient.detach())
+
+            n_internal_degrees = max(n_internal_degrees, len(g_inverse))
+
+        # We pad the tensors with zeros to ensure that they all have the same
+        # dimensions to allow easier batch calculations. This can occur when
+        # certain conformers contain different ICs, e.g. one with a planar N and
+        # another with a pyramidal N.
+        for j, tensor, i, tensors in (
+            (j, tensor, i, tensors)
+            for i, tensors in enumerate((b_matrices, g_inverses, b_matrix_gradients))
+            for j, tensor in enumerate(tensors)
+        ):
+
+            if len(tensor) == n_internal_degrees:
+                continue
+
+            n_pad = n_internal_degrees - tensor.shape[0]
+
+            tensor = torch.cat((tensor, torch.zeros((n_pad, *tensor.shape[1:]))), dim=0)
+
+            if i == 1:
+                tensor = torch.cat(
+                    (tensor, torch.zeros((tensor.shape[0], n_pad))), dim=1
+                )
+
+            tensors[j] = tensor
 
         return (
             torch.stack(b_matrices),

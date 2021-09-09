@@ -84,6 +84,50 @@ def test_parameter_ids(mock_hcl_conformers, mock_hcl_system):
     }
 
 
+def test_initialize_internal_coordinates():
+    """Test that the internal coordinate matrices can be correctly constructed and
+    padding when different conformers of a molecule have different numbers of internal
+    coordinates. See ``test_gradient_hessian_projection`` for a more rigorous
+    integration test.
+    """
+
+    topology = Molecule.from_mapped_smiles("[H:1][C:2]#[C:3][H:4]").to_topology()
+
+    conformers = torch.tensor(
+        [
+            [[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [3.0, 1.0, 0.0]],
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [3.0, 0.0, 0.0]],
+        ],
+        requires_grad=True
+    )
+
+    objective = EnergyObjective.__new__(EnergyObjective)
+    objective._conformers = conformers
+
+    b_matrix, g_inverse, b_matrix_gradient = objective._initialize_internal_coordinates(
+        "ric", topology, True
+    )
+
+    # The first conformer will have 6 ICs (3 bonds, 2 angles, 1 dihedral), while the
+    # second will have 7 as the dihedral is replaced with 2 linear angle terms. We
+    # should expect the first conformer then to have some zero paddings added to match
+    # the shape of the second conformer matricies.
+    assert b_matrix.shape == (2, 7, 12)
+    assert torch.allclose(b_matrix[0, 6], torch.tensor(0.0))
+    assert not torch.allclose(b_matrix[1, 6], torch.tensor(0.0))
+
+    assert g_inverse.shape == (2, 7, 7)
+    assert torch.allclose(g_inverse[0, 6, :], torch.tensor(0.0))
+    assert torch.allclose(g_inverse[0, :, 6], torch.tensor(0.0))
+
+    assert not torch.allclose(g_inverse[1, 6, :], torch.tensor(0.0))
+    assert not torch.allclose(g_inverse[1, :, 6], torch.tensor(0.0))
+
+    assert b_matrix_gradient.shape == (2, 7, 12, 12)
+    assert torch.allclose(b_matrix_gradient[0, 6], torch.tensor(0.0))
+    assert not torch.allclose(b_matrix_gradient[1, 6], torch.tensor(0.0))
+
+
 def test_gradient_hessian_projection(ethanol, ethanol_conformer, ethanol_system):
     """An integration test of projecting a set of gradients and hessians onto internal
     coordinates. The values are compared against the more established ``geomtric``
@@ -151,7 +195,7 @@ def test_evaluate_mm_energies(
     )
 
     mm_energies, mm_gradients, mm_hessians = energy_objective._evaluate_mm_energies(
-        SMIRNOFFModel([], ForceField), compute_gradients, compute_hessians
+        SMIRNOFFModel([], None), compute_gradients, compute_hessians
     )
 
     expected_energies, expected_gradients, expected_hessians = mock_hcl_mm_values
@@ -185,7 +229,7 @@ def test_evaluate_energies(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_val
         energy_metric=metrics.mse(),
     )
 
-    loss = energy_objective.evaluate(SMIRNOFFModel([], ForceField))
+    loss = energy_objective.evaluate(SMIRNOFFModel([], None))
 
     assert loss.shape == (1,)
     assert torch.isclose(loss, expected_scale.square())
@@ -207,7 +251,7 @@ def test_evaluate_gradients(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_va
         gradient_metric=metrics.mse(()),
     )
 
-    loss = energy_objective.evaluate(SMIRNOFFModel([], ForceField))
+    loss = energy_objective.evaluate(SMIRNOFFModel([], None))
 
     assert loss.shape == (1,)
     assert torch.isclose(loss, expected_scale.square())
@@ -230,7 +274,7 @@ def test_evaluate_hessians(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_val
         hessian_metric=metrics.mse(()),
     )
 
-    loss = energy_objective.evaluate(SMIRNOFFModel([], ForceField))
+    loss = energy_objective.evaluate(SMIRNOFFModel([], None))
 
     assert loss.shape == (1,)
     assert torch.isclose(loss, expected_scale.square())
