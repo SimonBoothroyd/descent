@@ -98,7 +98,7 @@ def test_initialize_internal_coordinates():
             [[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [3.0, 1.0, 0.0]],
             [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [3.0, 0.0, 0.0]],
         ],
-        requires_grad=True
+        requires_grad=True,
     )
 
     objective = EnergyObjective.__new__(EnergyObjective)
