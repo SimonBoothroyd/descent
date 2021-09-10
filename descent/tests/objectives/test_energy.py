@@ -417,7 +417,7 @@ def test_get_state(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_values):
         mock_mm_hessians,
         None,
         None,
-        "cartesian"
+        "cartesian",
     )
 
     state = term.__getstate__()
@@ -463,7 +463,7 @@ def test_set_state(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_values):
         mock_mm_hessians,
         None,
         None,
-        "cartesian"
+        "cartesian",
     )
 
     term_new = EnergyObjective.__new__(EnergyObjective)
