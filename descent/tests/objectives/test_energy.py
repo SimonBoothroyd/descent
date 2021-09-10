@@ -1,6 +1,7 @@
 import copy
 from typing import Tuple
 
+import dill
 import numpy
 import pytest
 import torch
@@ -278,6 +279,40 @@ def test_evaluate_hessians(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_val
 
     assert loss.shape == (1,)
     assert torch.isclose(loss, expected_scale.square())
+
+
+def test_from_grouped_results(mock_hcl_conformers, mock_hcl_mm_values):
+    def energy_transforms(x):
+        return x * 2.0
+
+    mock_energies, mock_gradients, mock_hessians = mock_hcl_mm_values
+
+    created_term = EnergyObjective._from_grouped_results(
+        (
+            "[Cl:1][Cl:2]",
+            mock_hcl_conformers,
+            mock_energies,
+            mock_gradients,
+            mock_hessians,
+        ),
+        ForceField("openff_unconstrained-1.0.0.offxml"),
+        energy_transforms=dill.dumps(energy_transforms),
+        energy_metric=dill.dumps(None),
+        gradient_transforms=dill.dumps(None),
+        gradient_metric=dill.dumps(None),
+        hessian_transforms=dill.dumps(None),
+        hessian_metric=dill.dumps(None),
+    )
+
+    assert created_term._system is not None
+
+    assert torch.allclose(created_term._conformers, mock_hcl_conformers)
+    assert torch.allclose(
+        created_term._reference_energies, energy_transforms(mock_energies)
+    )
+
+    assert torch.allclose(created_term._reference_gradients, mock_gradients)
+    assert torch.allclose(created_term._reference_hessians, mock_hessians)
 
 
 @pytest.mark.parametrize("include_energies", [True, False])
