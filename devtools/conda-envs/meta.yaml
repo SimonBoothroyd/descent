@@ -11,8 +11,7 @@ dependencies:
   - python
   - pip
   - dill
-
-  - click
+  - tqdm
 
   - openff-toolkit-base >=0.9.2
   - openff-interchange ==0.1.0

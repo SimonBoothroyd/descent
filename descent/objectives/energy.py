@@ -18,6 +18,7 @@ from smirnoffee.potentials.potentials import evaluate_vectorized_system_energy
 from smirnoffee.smirnoff import vectorize_system
 from torch._vmap_internals import vmap
 from torch.autograd import grad
+from tqdm import tqdm
 from typing_extensions import Literal
 
 from descent import metrics, transforms
@@ -656,6 +657,7 @@ class EnergyObjective(ObjectiveContribution):
         optimization_results: "OptimizationResultCollection",
         include_gradients: bool,
         include_hessians: bool,
+        verbose: bool = True,
     ) -> Tuple[
         Dict[Tuple[str, "ObjectId"], torch.Tensor],
         Dict[Tuple[str, "ObjectId"], torch.Tensor],
@@ -668,6 +670,7 @@ class EnergyObjective(ObjectiveContribution):
                 gradients and hessians should be retrieved where available.
             include_gradients: Whether to retrieve gradient values.
             include_hessians: Whether to retrieve hessian values.
+            verbose: Whether to log progress to the terminal.
 
         Returns:
             The values of the gradients and hessians (if requested) stored in
@@ -689,7 +692,11 @@ class EnergyObjective(ObjectiveContribution):
 
         qc_gradients, qc_hessians = {}, {}
 
-        for qc_record, _ in basic_result_collection.to_records():
+        for qc_record, _ in tqdm(
+            basic_result_collection.to_records(),
+            desc="Pulling gradient / hessian data",
+            disable=not verbose,
+        ):
 
             address = qc_record.client.address
 
@@ -762,6 +769,7 @@ class EnergyObjective(ObjectiveContribution):
         hessian_metric: Optional[LossMetric] = None,
         hessian_coordinate_system: Literal["cartesian", "ric"] = "cartesian",
         n_processes: int = 1,
+        verbose: bool = True,
     ) -> List["EnergyObjective"]:
         """Creates a list of energy objective contribution terms (one per unique
         molecule) from the **final** structures a set of QC optimization results.
@@ -789,6 +797,7 @@ class EnergyObjective(ObjectiveContribution):
             hessian_coordinate_system: The coordinate system to project the QM and MM
                 hessians to before computing the loss metric.
             n_processes: The number of processes to parallelize this function across.
+            verbose: Whether to log progress to the terminal.
 
         Returns:
             A list of the energy objective terms.
@@ -799,7 +808,11 @@ class EnergyObjective(ObjectiveContribution):
         # Group the results by molecule ignoring stereochemistry
         per_molecule_records = defaultdict(list)
 
-        for qc_record, molecule in optimization_results.to_records():
+        for qc_record, molecule in tqdm(
+            optimization_results.to_records(),
+            desc="Pulling main optimisation records",
+            disable=not verbose,
+        ):
 
             molecule: Molecule = molecule.canonical_order_atoms()
             conformer = molecule.conformers[0].value_in_unit(simtk_unit.angstrom)
@@ -811,7 +824,7 @@ class EnergyObjective(ObjectiveContribution):
             per_molecule_records[smiles].append((qc_record, conformer))
 
         qc_gradients, qc_hessians = cls._retrieve_gradient_and_hessians(
-            optimization_results, include_gradients, include_hessians
+            optimization_results, include_gradients, include_hessians, verbose
         )
 
         result_tensors = []
@@ -855,36 +868,41 @@ class EnergyObjective(ObjectiveContribution):
             # We need to dill any potential lambda functions as the default
             # multiprocessing pickler cannot handle these by default.
             contributions = list(
-                pool.imap(
-                    functools.partial(
-                        cls._from_grouped_results,
-                        force_field=initial_force_field,
-                        energy_transforms=dill.dumps(
-                            energy_transforms if include_energies else None
+                tqdm(
+                    pool.imap(
+                        functools.partial(
+                            cls._from_grouped_results,
+                            force_field=initial_force_field,
+                            energy_transforms=dill.dumps(
+                                energy_transforms if include_energies else None
+                            ),
+                            energy_metric=dill.dumps(
+                                energy_metric if include_energies else None
+                            ),
+                            gradient_transforms=dill.dumps(
+                                gradient_transforms if include_gradients else None
+                            ),
+                            gradient_metric=dill.dumps(
+                                gradient_metric if include_gradients else None
+                            ),
+                            gradient_coordinate_system=gradient_coordinate_system
+                            if include_gradients
+                            else None,
+                            hessian_transforms=dill.dumps(
+                                hessian_transforms if include_hessians else None
+                            ),
+                            hessian_metric=dill.dumps(
+                                hessian_metric if include_hessians else None
+                            ),
+                            hessian_coordinate_system=hessian_coordinate_system
+                            if include_hessians
+                            else None,
                         ),
-                        energy_metric=dill.dumps(
-                            energy_metric if include_energies else None
-                        ),
-                        gradient_transforms=dill.dumps(
-                            gradient_transforms if include_gradients else None
-                        ),
-                        gradient_metric=dill.dumps(
-                            gradient_metric if include_gradients else None
-                        ),
-                        gradient_coordinate_system=gradient_coordinate_system
-                        if include_gradients
-                        else None,
-                        hessian_transforms=dill.dumps(
-                            hessian_transforms if include_hessians else None
-                        ),
-                        hessian_metric=dill.dumps(
-                            hessian_metric if include_hessians else None
-                        ),
-                        hessian_coordinate_system=hessian_coordinate_system
-                        if include_hessians
-                        else None,
+                        result_tensors,
                     ),
-                    result_tensors,
+                    total=len(result_tensors),
+                    disable=not verbose,
+                    desc="Building energy contribution objects.",
                 )
             )
 
