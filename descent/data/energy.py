@@ -3,10 +3,8 @@ from collections import defaultdict
 from multiprocessing import Pool
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
-import dill
 import torch
 from openff.interchange.components.interchange import Interchange
-from openff.interchange.models import PotentialKey
 from openff.toolkit.topology import Molecule, Topology
 from openff.toolkit.typing.engines.smirnoff import ForceField
 from openff.units import unit
@@ -15,16 +13,15 @@ from smirnoffee.geometry.internal import (
     detect_internal_coordinates,
 )
 from smirnoffee.potentials.potentials import evaluate_vectorized_system_energy
-from smirnoffee.smirnoff import vectorize_system
 from torch._vmap_internals import vmap
 from torch.autograd import grad
 from tqdm import tqdm
 from typing_extensions import Literal
 
 from descent import metrics, transforms
+from descent.data import Dataset, DatasetEntry
 from descent.metrics import LossMetric
 from descent.models import ParameterizationModel
-from descent.objectives import ObjectiveContribution
 from descent.transforms import LossTransform
 
 if TYPE_CHECKING:
@@ -39,49 +36,19 @@ _HARTREE_TO_KJ_MOL = (
 )
 _INVERSE_BOHR_TO_ANGSTROM = (1.0 * unit.bohr ** -1).to(unit.angstrom ** -1).magnitude
 
-_LAMBDA_FIELDS = [
-    "energy_transforms",
-    "energy_metric",
-    "gradient_transforms",
-    "gradient_metric",
-    "hessian_transforms",
-    "hessian_metric",
-]
 
-
-class EnergyObjective(ObjectiveContribution):
-    """An objective term which measures the deviations of a set of MM
-    energies, gradients, and hessians from a set of reference (usually QM) values.
-    """
-
-    @property
-    def parameter_ids(self) -> List[Tuple[str, PotentialKey, str]]:
-
-        return sorted(
-            {
-                (handler_type, potential_key, attribute)
-                for (handler_type, _), (_, _, parameters) in self._system.items()
-                for potential_key, attributes in parameters
-                for attribute in attributes
-            },
-            key=lambda x: x[0],
-            reverse=True,
-        )
+class EnergyEntry(DatasetEntry):
+    """A object that stores reference energy, gradient and hessian labels for a molecule
+    in multiple conforms."""
 
     def __init__(
         self,
-        system: Interchange,
+        model_input: Union[Interchange],
         conformers: torch.Tensor,
         reference_energies: Optional[torch.Tensor] = None,
-        energy_transforms: Optional[Union[LossTransform, List[LossTransform]]] = None,
-        energy_metric: Optional[LossMetric] = None,
         reference_gradients: Optional[torch.Tensor] = None,
-        gradient_transforms: Optional[Union[LossTransform, List[LossTransform]]] = None,
-        gradient_metric: Optional[LossMetric] = None,
         gradient_coordinate_system: Literal["cartesian", "ric"] = "cartesian",
         reference_hessians: Optional[torch.Tensor] = None,
-        hessian_transforms: Optional[Union[LossTransform, List[LossTransform]]] = None,
-        hessian_metric: Optional[LossMetric] = None,
         hessian_coordinate_system: Literal["cartesian", "ric"] = "cartesian",
     ):
         """
@@ -89,38 +56,26 @@ class EnergyObjective(ObjectiveContribution):
         Args:
             reference_energies: The reference energies with shape=(n_conformers, 1)
                 and units of [kJ / mol].
-            energy_transforms: Transforms to apply to the QM and MM energies
-                before computing the loss metric.
-            energy_metric: The loss metric (e.g. MSE) to compute from the QM and MM
-                energies.
             reference_gradients: The reference gradients with
                 shape=(n_conformers, n_atoms, 3) and units of [kJ / mol / A].
-            gradient_transforms: Transforms to apply to the QM and MM gradients
-                before computing the loss metric.
-            gradient_metric: The loss metric (e.g. MSE) to compute from the QM and MM
-                gradients.
             gradient_coordinate_system: The coordinate system to project the QM and MM
                 gradients to before computing the loss metric.
             reference_hessians: The reference gradients with
                 shape=(n_conformers, n_atoms * 3, n_atoms * 3) and units of
                 [kJ / mol / A^2].
-            hessian_transforms: Transforms to apply to the QM and MM hessians
-                before computing the loss metric.
-            hessian_metric: The loss metric (e.g. MSE) to compute from the QM and MM
-                hessians
             hessian_coordinate_system: The coordinate system to project the QM and MM
                 hessians to before computing the loss metric.
         """
+
+        super(EnergyEntry, self).__init__(model_input)
 
         self._validate_inputs(
             conformers,
             reference_energies,
             reference_gradients,
             reference_hessians,
-            system,
+            model_input,
         )
-
-        self._system = vectorize_system(system)
 
         self._conformers = conformers
 
@@ -129,65 +84,31 @@ class EnergyObjective(ObjectiveContribution):
         }
         self._inverse_b_matrices = {
             coordinate_system.lower(): self._initialize_internal_coordinates(
-                coordinate_system, system.topology, reference_hessians is not None
+                coordinate_system, model_input.topology, reference_hessians is not None
             )
             for coordinate_system in internal_coordinate_systems
             if coordinate_system is not None
             and coordinate_system.lower() != "cartesian"
         }
 
-        if reference_energies is not None:
-
-            energy_transforms = (
-                transforms.relative()
-                if energy_transforms is None
-                else energy_transforms
-            )
-            energy_metric = metrics.mse() if energy_metric is None else energy_metric
-
-            reference_energies = transforms.transform_tensor(
-                reference_energies, energy_transforms
-            )
-
         self._reference_energies = reference_energies
-        self._energy_transforms = energy_transforms
-        self._energy_metric = energy_metric
 
         if reference_hessians is not None:
 
-            (
-                hessian_metric,
-                hessian_transforms,
-                reference_hessians,
-            ) = self._initialize_reference_hessians(
-                reference_hessians,
-                hessian_transforms,
-                hessian_metric,
-                hessian_coordinate_system,
-                reference_gradients,
+            reference_hessians = self._project_hessians(
+                reference_hessians, reference_gradients, hessian_coordinate_system
             )
 
         self._reference_hessians = reference_hessians
-        self._hessian_transforms = hessian_transforms
-        self._hessian_metric = hessian_metric
         self._hessian_coordinate_system = hessian_coordinate_system
 
         if reference_gradients is not None:
 
-            (
-                gradient_metric,
-                gradient_transforms,
-                reference_gradients,
-            ) = self._initialize_reference_gradients(
-                reference_gradients,
-                gradient_transforms,
-                gradient_metric,
-                gradient_coordinate_system,
+            reference_gradients = self._project_gradients(
+                reference_gradients, gradient_coordinate_system
             )
 
         self._reference_gradients = reference_gradients
-        self._gradient_transforms = gradient_transforms
-        self._gradient_metric = gradient_metric
         self._gradient_coordinate_system = gradient_coordinate_system
 
     @classmethod
@@ -418,37 +339,6 @@ class EnergyObjective(ObjectiveContribution):
             torch.stack(b_matrix_gradients),
         )
 
-    def _initialize_reference_gradients(
-        self,
-        reference_gradients: torch.Tensor,
-        gradient_transforms: Optional[Union[LossTransform, List[LossTransform]]],
-        gradient_metric: Optional[LossMetric],
-        gradient_coordinate_system: Literal["cartesian", "ric"],
-    ) -> Tuple[List[LossTransform], LossMetric, torch.Tensor]:
-        """Applies the relevant transforms and projects to the reference gradients and
-        populates missing transforms (identity) and metrics (MSE).
-
-        Returns:
-            The the gradient transforms, metric and transformed reference values.
-        """
-
-        gradient_transforms = (
-            [transforms.identity()]
-            if gradient_transforms is None
-            else gradient_transforms
-        )
-        gradient_metric = (
-            metrics.mse(dim=()) if gradient_metric is None else gradient_metric
-        )
-
-        reference_gradients = transforms.transform_tensor(
-            self._project_gradients(reference_gradients, gradient_coordinate_system),
-            gradient_transforms,
-        )
-
-        # noinspection PyTypeChecker
-        return gradient_metric, gradient_transforms, reference_gradients
-
     def _project_gradients(
         self, gradients: torch.Tensor, coordinate_system: Literal["cartesian", "ric"]
     ) -> torch.Tensor:
@@ -468,41 +358,6 @@ class EnergyObjective(ObjectiveContribution):
         )
 
         return gradients
-
-    def _initialize_reference_hessians(
-        self,
-        reference_hessians: torch.Tensor,
-        hessian_transforms: Optional[Union[LossTransform, List[LossTransform]]],
-        hessian_metric: Optional[LossMetric],
-        hessian_coordinate_system: Literal["cartesian", "ric"],
-        reference_gradients: torch.Tensor,
-    ) -> Tuple[List[LossTransform], LossMetric, torch.Tensor]:
-        """Applies the relevant transforms and projects to the reference hessians and
-        populates missing transforms (identity) and metrics (MSE).
-
-        Returns:
-            The the hessians transforms, metric and transformed reference values.
-        """
-
-        hessian_transforms = (
-            [transforms.identity()]
-            if hessian_transforms is None
-            else hessian_transforms
-        )
-
-        hessian_metric = (
-            metrics.mse(dim=()) if hessian_metric is None else hessian_metric
-        )
-
-        reference_hessians = transforms.transform_tensor(
-            self._project_hessians(
-                reference_hessians, reference_gradients, hessian_coordinate_system
-            ),
-            hessian_transforms,
-        )
-
-        # noinspection PyTypeChecker
-        return hessian_metric, hessian_transforms, reference_hessians
 
     def _project_hessians(
         self,
@@ -556,14 +411,14 @@ class EnergyObjective(ObjectiveContribution):
         compute_hessians: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Evaluate the perturbed MM energies, gradients and hessians of the system
-        associated with this term.
+        associated with this entry.
 
         Args:
             model: The model that will return vectorized view of a parameterised
                 molecule.
         """
 
-        vectorized_system = model.forward(self._system)
+        vectorized_system = model.forward(self._model_input)
         conformers = self._conformers.detach().clone().requires_grad_()
 
         mm_energies, mm_gradients, mm_hessians = [], [], []
@@ -605,8 +460,68 @@ class EnergyObjective(ObjectiveContribution):
             None if not compute_hessians else torch.stack(mm_hessians),
         )
 
-    def evaluate(self, model: ParameterizationModel) -> torch.Tensor:
+    @staticmethod
+    def _evaluate_loss_contribution(
+        reference_tensor: torch.Tensor,
+        computed_tensor: torch.Tensor,
+        data_transforms: Union[LossTransform, List[LossTransform]],
+        data_metric: LossMetric,
+    ) -> torch.Tensor:
+        """Computes the loss contribution for a set of computed and reference labels.
 
+        Args:
+            reference_tensor: The reference tensor.
+            computed_tensor: The computed tensor.
+            data_transforms: Transforms to apply to the reference and computed tensors.
+            data_metric: The loss metric (e.g. MSE) to compute.
+
+        Returns:
+            The loss contribution.
+        """
+
+        transformed_reference_tensor = transforms.transform_tensor(
+            reference_tensor, data_transforms
+        )
+        transformed_computed_tensor = transforms.transform_tensor(
+            computed_tensor, data_transforms
+        )
+
+        return data_metric(transformed_computed_tensor, transformed_reference_tensor)
+
+    def evaluate(
+        self,
+        model: ParameterizationModel,
+        energy_transforms: Optional[Union[LossTransform, List[LossTransform]]] = None,
+        energy_metric: Optional[LossMetric] = None,
+        gradient_transforms: Optional[Union[LossTransform, List[LossTransform]]] = None,
+        gradient_metric: Optional[LossMetric] = None,
+        hessian_transforms: Optional[Union[LossTransform, List[LossTransform]]] = None,
+        hessian_metric: Optional[LossMetric] = None,
+    ) -> torch.Tensor:
+        """
+
+        Args:
+            model: The model that will return vectorized view of a parameterised
+                molecule.
+            energy_transforms: Transforms to apply to the QM and MM energies
+                before computing the loss metric. By default
+                ``descent.transforms.relative(index=0)`` is used if no value is provided.
+            energy_metric: The loss metric (e.g. MSE) to compute from the QM and MM
+                energies. By default ``descent.metrics.mse()`` is used if no value is
+                provided.
+            gradient_transforms: Transforms to apply to the QM and MM gradients
+                before computing the loss metric. By default
+                ``descent.transforms.identity()`` is used if no value is provided.
+            gradient_metric: The loss metric (e.g. MSE) to compute from the QM and MM
+                gradients. By default ``descent.metrics.mse()`` is used if no value is
+                provided.
+            hessian_transforms: Transforms to apply to the QM and MM hessians
+                before computing the loss metric. By default
+                ``descent.transforms.identity()`` is used if no value is provided.
+            hessian_metric: The loss metric (e.g. MSE) to compute from the QM and MM
+                hessians. By default ``descent.metrics.mse()`` is used if no value is
+                provided.
+        """
         mm_energies, mm_gradients, mm_hessians = self._evaluate_mm_energies(
             model,
             compute_gradients=(
@@ -620,36 +535,44 @@ class EnergyObjective(ObjectiveContribution):
 
         if self._reference_energies is not None:
 
-            transformed_mm_energies = transforms.transform_tensor(
-                mm_energies, self._energy_transforms
-            )
-            loss += self._energy_metric(
-                transformed_mm_energies, self._reference_energies
+            loss += self._evaluate_loss_contribution(
+                self._reference_energies,
+                mm_energies,
+                energy_transforms
+                if energy_transforms is not None
+                else transforms.relative(index=0),
+                energy_metric if energy_metric is not None else metrics.mse(),
             )
 
         if self._reference_gradients is not None:
 
-            transformed_mm_gradients = transforms.transform_tensor(
+            loss += self._evaluate_loss_contribution(
+                self._reference_gradients,
                 self._project_gradients(mm_gradients, self._gradient_coordinate_system),
-                self._gradient_transforms,
-            )
-            loss += self._gradient_metric(
-                transformed_mm_gradients, self._reference_gradients
+                gradient_transforms
+                if gradient_transforms is not None
+                else transforms.relative(index=0),
+                gradient_metric if gradient_metric is not None else metrics.mse(),
             )
 
         if self._reference_hessians is not None:
 
-            transformed_mm_hessians = transforms.transform_tensor(
+            loss += self._evaluate_loss_contribution(
+                self._reference_hessians,
                 self._project_hessians(
                     mm_hessians, mm_gradients, self._hessian_coordinate_system
                 ),
-                self._hessian_transforms,
-            )
-            loss += self._hessian_metric(
-                transformed_mm_hessians, self._reference_hessians
+                hessian_transforms
+                if hessian_transforms is not None
+                else transforms.identity(),
+                hessian_metric if hessian_metric is not None else metrics.mse(),
             )
 
         return loss
+
+
+class EnergyDataset(Dataset[EnergyEntry]):
+    """A data set that stores reference energy, gradient and hessian labels."""
 
     @classmethod
     def _retrieve_gradient_and_hessians(
@@ -731,19 +654,14 @@ class EnergyObjective(ObjectiveContribution):
         ],
         force_field: ForceField,
         **kwargs,
-    ) -> "EnergyObjective":
+    ) -> "EnergyEntry":
 
         cmiles, conformers, qc_energies, qc_gradients, qc_hessians = grouped_data
 
         molecule = Molecule.from_mapped_smiles(cmiles, allow_undefined_stereo=True)
         system = Interchange.from_smirnoff(force_field, molecule.to_topology())
 
-        # We need to un-dill any potential lambda functions as the default
-        # multiprocessing pickler cannot handle these by default.
-        for field_name in _LAMBDA_FIELDS:
-            kwargs[field_name] = dill.loads(kwargs[field_name], None)
-
-        return EnergyObjective(
+        return EnergyEntry(
             system,
             conformers,
             reference_energies=qc_energies,
@@ -758,49 +676,31 @@ class EnergyObjective(ObjectiveContribution):
         optimization_results: "OptimizationResultCollection",
         initial_force_field: ForceField,
         include_energies: bool = True,
-        energy_transforms: Optional[Union[LossTransform, List[LossTransform]]] = None,
-        energy_metric: Optional[LossMetric] = None,
         include_gradients: bool = False,
-        gradient_transforms: Optional[Union[LossTransform, List[LossTransform]]] = None,
-        gradient_metric: Optional[LossMetric] = None,
         gradient_coordinate_system: Literal["cartesian", "ric"] = "cartesian",
         include_hessians: bool = False,
-        hessian_transforms: Optional[Union[LossTransform, List[LossTransform]]] = None,
-        hessian_metric: Optional[LossMetric] = None,
         hessian_coordinate_system: Literal["cartesian", "ric"] = "cartesian",
         n_processes: int = 1,
         verbose: bool = True,
-    ) -> List["EnergyObjective"]:
-        """Creates a list of energy objective contribution terms (one per unique
-        molecule) from the **final** structures a set of QC optimization results.
+    ) -> "EnergyDataset":
+        """Creates a dataset of energy entries (one per unique molecule) from the
+        **final** structures a set of QC optimization results.
 
         Args:
             optimization_results: The collection of result records.
             initial_force_field: The force field that will be trained.
             include_energies: Whether to include energies.
-            energy_transforms: Transforms to apply to the QM and MM energies
-                before computing the loss metric.
-            energy_metric: The loss metric (e.g. MSE) to compute from the QM and MM
-                energies.
             include_gradients: Whether to include gradients.
-            gradient_transforms: Transforms to apply to the QM and MM gradients
-                before computing the loss metric.
-            gradient_metric: The loss metric (e.g. MSE) to compute from the QM and MM
-                gradients.
             gradient_coordinate_system: The coordinate system to project the QM and MM
                 gradients to before computing the loss metric.
             include_hessians: Whether to include hessians.
-            hessian_transforms: Transforms to apply to the QM and MM hessians
-                before computing the loss metric.
-            hessian_metric: The loss metric (e.g. MSE) to compute from the QM and MM
-                hessians
             hessian_coordinate_system: The coordinate system to project the QM and MM
                 hessians to before computing the loss metric.
             n_processes: The number of processes to parallelize this function across.
             verbose: Whether to log progress to the terminal.
 
         Returns:
-            A list of the energy objective terms.
+            A dataset of the energy entries.
         """
 
         from simtk import unit as simtk_unit
@@ -865,35 +765,15 @@ class EnergyObjective(ObjectiveContribution):
 
         with Pool(n_processes) as pool:
 
-            # We need to dill any potential lambda functions as the default
-            # multiprocessing pickler cannot handle these by default.
-            contributions = list(
+            entries = list(
                 tqdm(
                     pool.imap(
                         functools.partial(
                             cls._from_grouped_results,
                             force_field=initial_force_field,
-                            energy_transforms=dill.dumps(
-                                energy_transforms if include_energies else None
-                            ),
-                            energy_metric=dill.dumps(
-                                energy_metric if include_energies else None
-                            ),
-                            gradient_transforms=dill.dumps(
-                                gradient_transforms if include_gradients else None
-                            ),
-                            gradient_metric=dill.dumps(
-                                gradient_metric if include_gradients else None
-                            ),
                             gradient_coordinate_system=gradient_coordinate_system
                             if include_gradients
                             else None,
-                            hessian_transforms=dill.dumps(
-                                hessian_transforms if include_hessians else None
-                            ),
-                            hessian_metric=dill.dumps(
-                                hessian_metric if include_hessians else None
-                            ),
                             hessian_coordinate_system=hessian_coordinate_system
                             if include_hessians
                             else None,
@@ -906,26 +786,59 @@ class EnergyObjective(ObjectiveContribution):
                 )
             )
 
-        return contributions
+        return cls(entries)
 
-    def __getstate__(self):
-        """A custom pickle function that ensures any lambda functions are correctly
-        serialized."""
+    def evaluate(
+        self,
+        model: ParameterizationModel,
+        energy_transforms: Optional[Union[LossTransform, List[LossTransform]]] = None,
+        energy_metric: Optional[LossMetric] = None,
+        gradient_transforms: Optional[Union[LossTransform, List[LossTransform]]] = None,
+        gradient_metric: Optional[LossMetric] = None,
+        hessian_transforms: Optional[Union[LossTransform, List[LossTransform]]] = None,
+        hessian_metric: Optional[LossMetric] = None,
+    ) -> torch.Tensor:
+        """Evaluates the contribution to the total loss function of the data stored
+        in this set using a specified model.
 
-        return_value = {**self.__dict__}
+        Args:
+            model: The model that will return vectorized view of a parameterised
+                molecule.
+            energy_transforms: Transforms to apply to the QM and MM energies
+                before computing the loss metric. By default
+                ``descent.transforms.relative(index=0)`` is used if no value is provided.
+            energy_metric: The loss metric (e.g. MSE) to compute from the QM and MM
+                energies. By default ``descent.metrics.mse()`` is used if no value is
+                provided.
+            gradient_transforms: Transforms to apply to the QM and MM gradients
+                before computing the loss metric. By default
+                ``descent.transforms.identity()`` is used if no value is provided.
+            gradient_metric: The loss metric (e.g. MSE) to compute from the QM and MM
+                gradients. By default ``descent.metrics.mse()`` is used if no value is
+                provided.
+            hessian_transforms: Transforms to apply to the QM and MM hessians
+                before computing the loss metric. By default
+                ``descent.transforms.identity()`` is used if no value is provided.
+            hessian_metric: The loss metric (e.g. MSE) to compute from the QM and MM
+                hessians. By default ``descent.metrics.mse()`` is used if no value is
+                provided.
 
-        for field_name in _LAMBDA_FIELDS:
-            return_value[f"_{field_name}"] = dill.dumps(return_value[f"_{field_name}"])
+        Returns:
+            The loss contribution of this dataset.
+        """
 
-        return return_value
+        loss = torch.zeros(1)
 
-    def __setstate__(self, state):
-        """A custom pickle function that ensures any lambda functions are correctly
-        serialized."""
+        for entry in self._entries:
 
-        state = {**state}
+            loss += entry(
+                model,
+                energy_transforms=energy_transforms,
+                energy_metric=energy_metric,
+                gradient_transforms=gradient_transforms,
+                gradient_metric=gradient_metric,
+                hessian_transforms=hessian_transforms,
+                hessian_metric=hessian_metric,
+            )
 
-        for field_name in _LAMBDA_FIELDS:
-            state[f"_{field_name}"] = dill.loads(state[f"_{field_name}"])
-
-        self.__dict__.update(state)
+        return loss
