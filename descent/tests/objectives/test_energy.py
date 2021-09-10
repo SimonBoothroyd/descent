@@ -398,3 +398,91 @@ def test_from_optimization_results(
                 energy_term._reference_hessians,
                 torch.zeros_like(energy_term._reference_hessians),
             )
+
+
+def test_get_state(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_values):
+
+    mock_mm_energies, mock_mm_gradients, mock_mm_hessians = mock_hcl_mm_values
+
+    term = EnergyObjective(
+        mock_hcl_system,
+        mock_hcl_conformers,
+        mock_mm_energies,
+        None,
+        None,
+        mock_mm_gradients,
+        None,
+        None,
+        "cartesian",
+        mock_mm_hessians,
+        None,
+        None,
+        "cartesian"
+    )
+
+    state = term.__getstate__()
+
+    assert "_system" in state
+
+    assert "_conformers" in state
+    assert torch.allclose(state["_conformers"], mock_hcl_conformers)
+
+    assert "_reference_energies" in state
+    assert torch.allclose(state["_reference_energies"], mock_mm_energies)
+
+    assert callable(dill.loads(state["_energy_transforms"]))
+    assert callable(dill.loads(state["_energy_metric"]))
+
+    assert "_reference_gradients" in state
+    assert torch.allclose(state["_reference_gradients"], mock_mm_gradients)
+
+    assert callable(dill.loads(state["_gradient_transforms"])[0])
+    assert callable(dill.loads(state["_gradient_metric"]))
+
+    assert "_reference_hessians" in state
+    assert torch.allclose(state["_reference_hessians"], mock_mm_hessians)
+
+    assert callable(dill.loads(state["_hessian_transforms"])[0])
+    assert callable(dill.loads(state["_hessian_metric"]))
+
+
+def test_set_state(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_values):
+
+    mock_mm_energies, mock_mm_gradients, mock_mm_hessians = mock_hcl_mm_values
+
+    term = EnergyObjective(
+        mock_hcl_system,
+        mock_hcl_conformers,
+        mock_mm_energies,
+        None,
+        None,
+        mock_mm_gradients,
+        None,
+        None,
+        "cartesian",
+        mock_mm_hessians,
+        None,
+        None,
+        "cartesian"
+    )
+
+    term_new = EnergyObjective.__new__(EnergyObjective)
+    term_new.__setstate__(term.__getstate__())
+
+    assert term_new._system == term._system
+    assert torch.allclose(term._conformers, term_new._conformers)
+
+    assert torch.allclose(term._reference_energies, term_new._reference_energies)
+
+    assert callable(term_new._energy_transforms)
+    assert callable(term_new._energy_metric)
+
+    assert torch.allclose(term._reference_gradients, term_new._reference_gradients)
+
+    assert callable(term_new._gradient_transforms[0])
+    assert callable(term_new._gradient_metric)
+
+    assert torch.allclose(term._reference_hessians, term_new._reference_hessians)
+
+    assert callable(term_new._hessian_transforms[0])
+    assert callable(term_new._hessian_metric)
