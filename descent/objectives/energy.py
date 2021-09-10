@@ -1,6 +1,9 @@
+import functools
 from collections import defaultdict
+from multiprocessing import Pool
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
+import dill
 import torch
 from openff.interchange.components.interchange import Interchange
 from openff.interchange.models import PotentialKey
@@ -34,6 +37,15 @@ _HARTREE_TO_KJ_MOL = (
     .magnitude
 )
 _INVERSE_BOHR_TO_ANGSTROM = (1.0 * unit.bohr ** -1).to(unit.angstrom ** -1).magnitude
+
+_LAMBDA_FIELDS = [
+    "energy_transforms",
+    "energy_metric",
+    "gradient_transforms",
+    "gradient_metric",
+    "hessian_transforms",
+    "hessian_metric",
+]
 
 
 class EnergyObjective(ObjectiveContribution):
@@ -701,6 +713,39 @@ class EnergyObjective(ObjectiveContribution):
         return qc_gradients, qc_hessians
 
     @classmethod
+    def _from_grouped_results(
+        cls,
+        grouped_data: Tuple[
+            str,
+            torch.Tensor,
+            Optional[torch.Tensor],
+            Optional[torch.Tensor],
+            Optional[torch.Tensor],
+        ],
+        force_field: ForceField,
+        **kwargs,
+    ) -> "EnergyObjective":
+
+        cmiles, conformers, qc_energies, qc_gradients, qc_hessians = grouped_data
+
+        molecule = Molecule.from_mapped_smiles(cmiles, allow_undefined_stereo=True)
+        system = Interchange.from_smirnoff(force_field, molecule.to_topology())
+
+        # We need to un-dill any potential lambda functions as the default
+        # multiprocessing pickler cannot handle these by default.
+        for field_name in _LAMBDA_FIELDS:
+            kwargs[field_name] = dill.loads(kwargs[field_name], None)
+
+        return EnergyObjective(
+            system,
+            conformers,
+            reference_energies=qc_energies,
+            reference_gradients=qc_gradients,
+            reference_hessians=qc_hessians,
+            **kwargs,
+        )
+
+    @classmethod
     def from_optimization_results(
         cls,
         optimization_results: "OptimizationResultCollection",
@@ -716,6 +761,7 @@ class EnergyObjective(ObjectiveContribution):
         hessian_transforms: Optional[Union[LossTransform, List[LossTransform]]] = None,
         hessian_metric: Optional[LossMetric] = None,
         hessian_coordinate_system: Literal["cartesian", "ric"] = "cartesian",
+        n_processes: int = 1,
     ) -> List["EnergyObjective"]:
         """Creates a list of energy objective contribution terms (one per unique
         molecule) from the **final** structures a set of QC optimization results.
@@ -742,6 +788,7 @@ class EnergyObjective(ObjectiveContribution):
                 hessians
             hessian_coordinate_system: The coordinate system to project the QM and MM
                 hessians to before computing the loss metric.
+            n_processes: The number of processes to parallelize this function across.
 
         Returns:
             A list of the energy objective terms.
@@ -757,7 +804,9 @@ class EnergyObjective(ObjectiveContribution):
             molecule: Molecule = molecule.canonical_order_atoms()
             conformer = molecule.conformers[0].value_in_unit(simtk_unit.angstrom)
 
-            smiles = molecule.to_smiles(isomeric=False, mapped=True)
+            smiles = molecule.to_smiles(
+                isomeric=True, explicit_hydrogens=True, mapped=True
+            )
 
             per_molecule_records[smiles].append((qc_record, conformer))
 
@@ -765,17 +814,12 @@ class EnergyObjective(ObjectiveContribution):
             optimization_results, include_gradients, include_hessians
         )
 
-        contributions = []
+        result_tensors = []
 
         for cmiles, qc_records in per_molecule_records.items():
 
-            molecule = Molecule.from_mapped_smiles(cmiles, allow_undefined_stereo=True)
-
-            system = Interchange.from_smirnoff(
-                initial_force_field, molecule.to_topology()
-            )
-
-            conformer_data = [
+            # noinspection PyTypeChecker
+            grouped_data = [
                 (
                     torch.from_numpy(conformer).type(torch.float32),
                     torch.tensor([qc_record.get_final_energy() * _HARTREE_TO_KJ_MOL]),
@@ -794,24 +838,76 @@ class EnergyObjective(ObjectiveContribution):
                 for qc_record, conformer in qc_records
             ]
 
-            conformers, qm_energies, qm_gradients, qm_hessians = zip(*conformer_data)
+            conformers, qm_energies, qm_gradients, qm_hessians = zip(*grouped_data)
 
-            contributions.append(
-                EnergyObjective(
-                    system,
+            result_tensors.append(
+                (
+                    cmiles,
                     torch.stack(conformers),
                     torch.stack(qm_energies) if include_energies else None,
-                    energy_transforms if include_energies else None,
-                    energy_metric if include_energies else None,
                     torch.stack(qm_gradients) if include_gradients else None,
-                    gradient_transforms if include_gradients else None,
-                    gradient_metric if include_gradients else None,
-                    gradient_coordinate_system if include_gradients else None,
                     torch.stack(qm_hessians) if include_hessians else None,
-                    hessian_transforms if include_hessians else None,
-                    hessian_metric if include_hessians else None,
-                    hessian_coordinate_system if include_hessians else None,
+                )
+            )
+
+        with Pool(n_processes) as pool:
+
+            # We need to dill any potential lambda functions as the default
+            # multiprocessing pickler cannot handle these by default.
+            contributions = list(
+                pool.imap(
+                    functools.partial(
+                        cls._from_grouped_results,
+                        force_field=initial_force_field,
+                        energy_transforms=dill.dumps(
+                            energy_transforms if include_energies else None
+                        ),
+                        energy_metric=dill.dumps(
+                            energy_metric if include_energies else None
+                        ),
+                        gradient_transforms=dill.dumps(
+                            gradient_transforms if include_gradients else None
+                        ),
+                        gradient_metric=dill.dumps(
+                            gradient_metric if include_gradients else None
+                        ),
+                        gradient_coordinate_system=gradient_coordinate_system
+                        if include_gradients
+                        else None,
+                        hessian_transforms=dill.dumps(
+                            hessian_transforms if include_hessians else None
+                        ),
+                        hessian_metric=dill.dumps(
+                            hessian_metric if include_hessians else None
+                        ),
+                        hessian_coordinate_system=hessian_coordinate_system
+                        if include_hessians
+                        else None,
+                    ),
+                    result_tensors,
                 )
             )
 
         return contributions
+
+    def __getstate__(self):
+        """A custom pickle function that ensures any lambda functions are correctly
+        serialized."""
+
+        return_value = {**self.__dict__}
+
+        for field_name in _LAMBDA_FIELDS:
+            return_value[f"_{field_name}"] = dill.dumps(return_value[f"_{field_name}"])
+
+        return return_value
+
+    def __setstate__(self, state):
+        """A custom pickle function that ensures any lambda functions are correctly
+        serialized."""
+
+        state = {**state}
+
+        for field_name in _LAMBDA_FIELDS:
+            state[f"_{field_name}"] = dill.loads(state[f"_{field_name}"])
+
+        self.__dict__.update(state)

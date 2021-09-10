@@ -10,6 +10,7 @@ dependencies:
     # Core dependencies
   - python
   - pip
+  - dill
 
   - click
 
@@ -24,18 +25,17 @@ dependencies:
   - smirnoffee >=0.0.1a2
   - pytorch >= 1.9.0
 
-  - pydantic
-
     # Optional dependencies
   - rdkit
   - ambertools
-
-  - geometric
 
     # Testing
   - pytest
   - pytest-cov
   - codecov
+
+  - pydantic
+  - geometric
 
     # Development
   - isort
