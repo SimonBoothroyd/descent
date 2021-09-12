@@ -488,7 +488,7 @@ class EnergyEntry(DatasetEntry):
 
         return data_metric(transformed_computed_tensor, transformed_reference_tensor)
 
-    def evaluate(
+    def evaluate_loss(
         self,
         model: ParameterizationModel,
         energy_transforms: Optional[Union[LossTransform, List[LossTransform]]] = None,
@@ -782,63 +782,8 @@ class EnergyDataset(Dataset[EnergyEntry]):
                     ),
                     total=len(result_tensors),
                     disable=not verbose,
-                    desc="Building energy contribution objects.",
+                    desc="Building entries.",
                 )
             )
 
         return cls(entries)
-
-    def evaluate(
-        self,
-        model: ParameterizationModel,
-        energy_transforms: Optional[Union[LossTransform, List[LossTransform]]] = None,
-        energy_metric: Optional[LossMetric] = None,
-        gradient_transforms: Optional[Union[LossTransform, List[LossTransform]]] = None,
-        gradient_metric: Optional[LossMetric] = None,
-        hessian_transforms: Optional[Union[LossTransform, List[LossTransform]]] = None,
-        hessian_metric: Optional[LossMetric] = None,
-    ) -> torch.Tensor:
-        """Evaluates the contribution to the total loss function of the data stored
-        in this set using a specified model.
-
-        Args:
-            model: The model that will return vectorized view of a parameterised
-                molecule.
-            energy_transforms: Transforms to apply to the QM and MM energies
-                before computing the loss metric. By default
-                ``descent.transforms.relative(index=0)`` is used if no value is provided.
-            energy_metric: The loss metric (e.g. MSE) to compute from the QM and MM
-                energies. By default ``descent.metrics.mse()`` is used if no value is
-                provided.
-            gradient_transforms: Transforms to apply to the QM and MM gradients
-                before computing the loss metric. By default
-                ``descent.transforms.identity()`` is used if no value is provided.
-            gradient_metric: The loss metric (e.g. MSE) to compute from the QM and MM
-                gradients. By default ``descent.metrics.mse()`` is used if no value is
-                provided.
-            hessian_transforms: Transforms to apply to the QM and MM hessians
-                before computing the loss metric. By default
-                ``descent.transforms.identity()`` is used if no value is provided.
-            hessian_metric: The loss metric (e.g. MSE) to compute from the QM and MM
-                hessians. By default ``descent.metrics.mse()`` is used if no value is
-                provided.
-
-        Returns:
-            The loss contribution of this dataset.
-        """
-
-        loss = torch.zeros(1)
-
-        for entry in self._entries:
-
-            loss += entry(
-                model,
-                energy_transforms=energy_transforms,
-                energy_metric=energy_metric,
-                gradient_transforms=gradient_transforms,
-                gradient_metric=gradient_metric,
-                hessian_transforms=hessian_transforms,
-                hessian_metric=hessian_metric,
-            )
-
-        return loss

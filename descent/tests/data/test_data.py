@@ -6,7 +6,7 @@ from descent.tests.mocking.systems import generate_mock_hcl_system
 
 
 class DummyEntry(DatasetEntry):
-    def evaluate(self, model, **kwargs):
+    def evaluate_loss(self, model, **kwargs):
         pass
 
 
@@ -20,7 +20,7 @@ def test_call(monkeypatch):
     evaluate_kwargs = {}
 
     class LocalEntry(DatasetEntry):
-        def evaluate(self, model, **kwargs):
+        def evaluate_loss(self, model, **kwargs):
             nonlocal evaluate_called
             evaluate_called = True
             evaluate_kwargs.update(kwargs)

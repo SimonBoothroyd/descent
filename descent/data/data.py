@@ -36,7 +36,7 @@ class DatasetEntry(abc.ABC):
         )
 
     @abc.abstractmethod
-    def evaluate(self, model: ParameterizationModel, **kwargs) -> torch.Tensor:
+    def evaluate_loss(self, model: ParameterizationModel, **kwargs) -> torch.Tensor:
         """Evaluates the contribution to the total loss function of the data stored
         in this entry using a specified model.
 
@@ -59,7 +59,7 @@ class DatasetEntry(abc.ABC):
         Returns:
             The loss contribution of this entry.
         """
-        return self.evaluate(model, **kwargs)
+        return self.evaluate_loss(model, **kwargs)
 
 
 class Dataset(torch.utils.data.IterableDataset[T_co], Generic[T_co]):

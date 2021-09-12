@@ -206,7 +206,7 @@ def test_evaluate_energies(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_val
         reference_energies=expected_energies + torch.ones_like(expected_energies),
     )
 
-    loss = entry.evaluate(
+    loss = entry.evaluate_loss(
         SMIRNOFFModel([], None),
         energy_transforms=lambda x: expected_scale * x,
         energy_metric=metrics.mse(),
@@ -230,7 +230,7 @@ def test_evaluate_gradients(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_va
         reference_gradients=expected_gradients + torch.ones_like(expected_gradients),
     )
 
-    loss = entry.evaluate(
+    loss = entry.evaluate_loss(
         SMIRNOFFModel([], None),
         gradient_transforms=lambda x: expected_scale * x,
         gradient_metric=metrics.mse(()),
@@ -255,7 +255,7 @@ def test_evaluate_hessians(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_val
         reference_hessians=expected_hessians + torch.ones_like(expected_hessians),
     )
 
-    loss = entry.evaluate(
+    loss = entry.evaluate_loss(
         SMIRNOFFModel([], None),
         hessian_transforms=lambda x: expected_scale * x,
         hessian_metric=metrics.mse(()),
