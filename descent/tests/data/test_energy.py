@@ -1,18 +1,16 @@
 import copy
 from typing import Tuple
 
-import dill
 import numpy
 import pytest
 import torch
-from openff.interchange.models import PotentialKey
 from openff.toolkit.topology import Molecule
 from openff.toolkit.typing.engines.smirnoff import ForceField
 from smirnoffee.geometry.internal import detect_internal_coordinates
 
 from descent import metrics, transforms
+from descent.data.energy import EnergyDataset, EnergyEntry
 from descent.models.smirnoff import SMIRNOFFModel
-from descent.objectives.energy import EnergyObjective
 from descent.tests.geometric import geometric_project_derivatives
 from descent.tests.mocking.qcdata import mock_optimization_result_collection
 from descent.tests.mocking.systems import generate_mock_hcl_system
@@ -67,24 +65,6 @@ def mock_hcl_mm_values() -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     )
 
 
-def test_parameter_ids(mock_hcl_conformers, mock_hcl_system):
-
-    term = EnergyObjective(
-        mock_hcl_system,
-        mock_hcl_conformers,
-        reference_energies=torch.zeros((len(mock_hcl_conformers), 1)),
-    )
-
-    assert {*term.parameter_ids} == {
-        ("Bonds", PotentialKey(id="[#1:1]-[#17:2]", associated_handler="Bonds"), "k"),
-        (
-            "Bonds",
-            PotentialKey(id="[#1:1]-[#17:2]", associated_handler="Bonds"),
-            "length",
-        ),
-    }
-
-
 def test_initialize_internal_coordinates():
     """Test that the internal coordinate matrices can be correctly constructed and
     padding when different conformers of a molecule have different numbers of internal
@@ -102,10 +82,10 @@ def test_initialize_internal_coordinates():
         requires_grad=True,
     )
 
-    objective = EnergyObjective.__new__(EnergyObjective)
-    objective._conformers = conformers
+    entry = EnergyEntry.__new__(EnergyEntry)
+    entry._conformers = conformers
 
-    b_matrix, g_inverse, b_matrix_gradient = objective._initialize_internal_coordinates(
+    b_matrix, g_inverse, b_matrix_gradient = entry._initialize_internal_coordinates(
         "ric", topology, True
     )
 
@@ -161,7 +141,7 @@ def test_gradient_hessian_projection(ethanol, ethanol_conformer, ethanol_system)
         reference_hessians,
     )
 
-    ethanol_objective = EnergyObjective(
+    entry = EnergyEntry(
         ethanol_system,
         ethanol_conformer.reshape(1, len(ethanol_conformer), 3),
         reference_gradients=reference_gradients,
@@ -170,8 +150,8 @@ def test_gradient_hessian_projection(ethanol, ethanol_conformer, ethanol_system)
         hessian_coordinate_system="ric",
     )
 
-    actual_gradiant = ethanol_objective._reference_gradients.numpy()
-    actual_hessian = ethanol_objective._reference_hessians.numpy()
+    actual_gradiant = entry._reference_gradients.numpy()
+    actual_hessian = entry._reference_hessians.numpy()
 
     assert numpy.allclose(
         actual_gradiant.reshape(expected_gradiant.shape), expected_gradiant, atol=1.0e-3
@@ -191,11 +171,9 @@ def test_evaluate_mm_energies(
     mock_hcl_mm_values,
 ):
 
-    energy_objective = EnergyObjective(
-        mock_hcl_system, mock_hcl_conformers, torch.zeros((2, 1))
-    )
+    entry = EnergyEntry(mock_hcl_system, mock_hcl_conformers, torch.zeros((2, 1)))
 
-    mm_energies, mm_gradients, mm_hessians = energy_objective._evaluate_mm_energies(
+    mm_energies, mm_gradients, mm_hessians = entry._evaluate_mm_energies(
         SMIRNOFFModel([], None), compute_gradients, compute_hessians
     )
 
@@ -222,15 +200,17 @@ def test_evaluate_energies(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_val
     expected_energies, *_ = mock_hcl_mm_values
     expected_scale = torch.rand(1)
 
-    energy_objective = EnergyObjective(
+    entry = EnergyEntry(
         mock_hcl_system,
         mock_hcl_conformers,
         reference_energies=expected_energies + torch.ones_like(expected_energies),
+    )
+
+    loss = entry.evaluate_loss(
+        SMIRNOFFModel([], None),
         energy_transforms=lambda x: expected_scale * x,
         energy_metric=metrics.mse(),
     )
-
-    loss = energy_objective.evaluate(SMIRNOFFModel([], None))
 
     assert loss.shape == (1,)
     assert torch.isclose(loss, expected_scale.square())
@@ -241,18 +221,20 @@ def test_evaluate_gradients(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_va
     expected_energies, expected_gradients, _ = mock_hcl_mm_values
     expected_scale = torch.rand(1)
 
-    energy_objective = EnergyObjective(
+    entry = EnergyEntry(
         mock_hcl_system,
         mock_hcl_conformers,
         # Set a reference energy to make sure gradient contributions don't
         # bleed between loss functions
         reference_energies=expected_energies,
         reference_gradients=expected_gradients + torch.ones_like(expected_gradients),
+    )
+
+    loss = entry.evaluate_loss(
+        SMIRNOFFModel([], None),
         gradient_transforms=lambda x: expected_scale * x,
         gradient_metric=metrics.mse(()),
     )
-
-    loss = energy_objective.evaluate(SMIRNOFFModel([], None))
 
     assert loss.shape == (1,)
     assert torch.isclose(loss, expected_scale.square())
@@ -263,7 +245,7 @@ def test_evaluate_hessians(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_val
     expected_energies, expected_gradients, expected_hessians = mock_hcl_mm_values
     expected_scale = torch.rand(1)
 
-    energy_objective = EnergyObjective(
+    entry = EnergyEntry(
         mock_hcl_system,
         mock_hcl_conformers,
         # Set a reference energy to make sure gradient contributions don't
@@ -271,23 +253,35 @@ def test_evaluate_hessians(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_val
         reference_energies=expected_energies,
         reference_gradients=expected_gradients,
         reference_hessians=expected_hessians + torch.ones_like(expected_hessians),
+    )
+
+    loss = entry.evaluate_loss(
+        SMIRNOFFModel([], None),
         hessian_transforms=lambda x: expected_scale * x,
         hessian_metric=metrics.mse(()),
     )
-
-    loss = energy_objective.evaluate(SMIRNOFFModel([], None))
 
     assert loss.shape == (1,)
     assert torch.isclose(loss, expected_scale.square())
 
 
+def test_evaluate_loss_contribution():
+
+    reference_tensor = torch.tensor([[1.0], [2.0]])
+    computed_tensor = torch.tensor([[4.0], [8.0]])
+
+    loss = EnergyEntry._evaluate_loss_contribution(
+        reference_tensor, computed_tensor, transforms.relative(), metrics.mse()
+    )
+
+    assert torch.isclose(loss, torch.tensor((4.0 - 1.0) ** 2 * 0.5))
+
+
 def test_from_grouped_results(mock_hcl_conformers, mock_hcl_mm_values):
-    def energy_transforms(x):
-        return x * 2.0
 
     mock_energies, mock_gradients, mock_hessians = mock_hcl_mm_values
 
-    created_term = EnergyObjective._from_grouped_results(
+    created_term = EnergyDataset._from_grouped_results(
         (
             "[Cl:1][Cl:2]",
             mock_hcl_conformers,
@@ -296,20 +290,12 @@ def test_from_grouped_results(mock_hcl_conformers, mock_hcl_mm_values):
             mock_hessians,
         ),
         ForceField("openff_unconstrained-1.0.0.offxml"),
-        energy_transforms=dill.dumps(energy_transforms),
-        energy_metric=dill.dumps(None),
-        gradient_transforms=dill.dumps(None),
-        gradient_metric=dill.dumps(None),
-        hessian_transforms=dill.dumps(None),
-        hessian_metric=dill.dumps(None),
     )
 
-    assert created_term._system is not None
+    assert created_term._model_input is not None
 
     assert torch.allclose(created_term._conformers, mock_hcl_conformers)
-    assert torch.allclose(
-        created_term._reference_energies, energy_transforms(mock_energies)
-    )
+    assert torch.allclose(created_term._reference_energies, mock_energies)
 
     assert torch.allclose(created_term._reference_gradients, mock_gradients)
     assert torch.allclose(created_term._reference_hessians, mock_hessians)
@@ -344,145 +330,56 @@ def test_from_optimization_results(
         molecules, monkeypatch
     )
 
-    energy_terms = EnergyObjective.from_optimization_results(
+    energy_dataset = EnergyDataset.from_optimization_results(
         optimization_collection,
         initial_force_field=ForceField(),
         include_energies=include_energies,
-        energy_transforms=transforms.relative(index=0),
         include_gradients=include_gradients,
         gradient_coordinate_system="cartesian",
         include_hessians=include_hessians,
         hessian_coordinate_system="cartesian",
     )
 
-    assert len(energy_terms) == 2
+    assert len(energy_dataset) == 2
 
-    for energy_term, n_atoms in zip(energy_terms, [5, 8]):
+    for energy_entry, n_atoms in zip(energy_dataset, [5, 8]):
 
         if not include_energies:
-            assert energy_term._reference_energies is None
+            assert energy_entry._reference_energies is None
         else:
 
-            assert energy_term._reference_energies is not None
-            assert energy_term._reference_energies.shape == (2, 1)
+            assert energy_entry._reference_energies is not None
+            assert energy_entry._reference_energies.shape == (2, 1)
 
             assert not torch.allclose(
-                energy_term._reference_energies,
-                torch.zeros_like(energy_term._reference_energies),
+                energy_entry._reference_energies,
+                torch.zeros_like(energy_entry._reference_energies),
             )
 
         if not include_gradients:
-            assert energy_term._reference_gradients is None
+            assert energy_entry._reference_gradients is None
         else:
 
-            assert energy_term._reference_gradients is not None
-            assert energy_term._reference_gradients.shape == (2, n_atoms, 3)
+            assert energy_entry._reference_gradients is not None
+            assert energy_entry._reference_gradients.shape == (2, n_atoms, 3)
 
             assert not torch.allclose(
-                energy_term._reference_gradients,
-                torch.zeros_like(energy_term._reference_gradients),
+                energy_entry._reference_gradients,
+                torch.zeros_like(energy_entry._reference_gradients),
             )
 
         if not include_hessians:
-            assert energy_term._reference_hessians is None
+            assert energy_entry._reference_hessians is None
         else:
 
-            assert energy_term._reference_hessians is not None
-            assert energy_term._reference_hessians.shape == (
+            assert energy_entry._reference_hessians is not None
+            assert energy_entry._reference_hessians.shape == (
                 2,
                 n_atoms * 3,
                 n_atoms * 3,
             )
 
             assert not torch.allclose(
-                energy_term._reference_hessians,
-                torch.zeros_like(energy_term._reference_hessians),
+                energy_entry._reference_hessians,
+                torch.zeros_like(energy_entry._reference_hessians),
             )
-
-
-def test_get_state(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_values):
-
-    mock_mm_energies, mock_mm_gradients, mock_mm_hessians = mock_hcl_mm_values
-
-    term = EnergyObjective(
-        mock_hcl_system,
-        mock_hcl_conformers,
-        mock_mm_energies,
-        None,
-        None,
-        mock_mm_gradients,
-        None,
-        None,
-        "cartesian",
-        mock_mm_hessians,
-        None,
-        None,
-        "cartesian",
-    )
-
-    state = term.__getstate__()
-
-    assert "_system" in state
-
-    assert "_conformers" in state
-    assert torch.allclose(state["_conformers"], mock_hcl_conformers)
-
-    assert "_reference_energies" in state
-    assert torch.allclose(state["_reference_energies"], mock_mm_energies)
-
-    assert callable(dill.loads(state["_energy_transforms"]))
-    assert callable(dill.loads(state["_energy_metric"]))
-
-    assert "_reference_gradients" in state
-    assert torch.allclose(state["_reference_gradients"], mock_mm_gradients)
-
-    assert callable(dill.loads(state["_gradient_transforms"])[0])
-    assert callable(dill.loads(state["_gradient_metric"]))
-
-    assert "_reference_hessians" in state
-    assert torch.allclose(state["_reference_hessians"], mock_mm_hessians)
-
-    assert callable(dill.loads(state["_hessian_transforms"])[0])
-    assert callable(dill.loads(state["_hessian_metric"]))
-
-
-def test_set_state(mock_hcl_conformers, mock_hcl_system, mock_hcl_mm_values):
-
-    mock_mm_energies, mock_mm_gradients, mock_mm_hessians = mock_hcl_mm_values
-
-    term = EnergyObjective(
-        mock_hcl_system,
-        mock_hcl_conformers,
-        mock_mm_energies,
-        None,
-        None,
-        mock_mm_gradients,
-        None,
-        None,
-        "cartesian",
-        mock_mm_hessians,
-        None,
-        None,
-        "cartesian",
-    )
-
-    term_new = EnergyObjective.__new__(EnergyObjective)
-    term_new.__setstate__(term.__getstate__())
-
-    assert term_new._system == term._system
-    assert torch.allclose(term._conformers, term_new._conformers)
-
-    assert torch.allclose(term._reference_energies, term_new._reference_energies)
-
-    assert callable(term_new._energy_transforms)
-    assert callable(term_new._energy_metric)
-
-    assert torch.allclose(term._reference_gradients, term_new._reference_gradients)
-
-    assert callable(term_new._gradient_transforms[0])
-    assert callable(term_new._gradient_metric)
-
-    assert torch.allclose(term._reference_hessians, term_new._reference_hessians)
-
-    assert callable(term_new._hessian_transforms[0])
-    assert callable(term_new._hessian_metric)

@@ -10,7 +10,6 @@ dependencies:
     # Core dependencies
   - python
   - pip
-  - dill
   - tqdm
 
   - openff-toolkit-base >=0.9.2

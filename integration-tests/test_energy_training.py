@@ -3,14 +3,14 @@ import torch
 from openff.units import unit
 
 from descent import metrics, transforms
+from descent.data.energy import EnergyEntry
 from descent.models.smirnoff import SMIRNOFFModel
-from descent.objectives import ObjectiveContribution
-from descent.objectives.energy import EnergyObjective
 from descent.tests.mocking.systems import generate_mock_hcl_system
 
 
 def train_parameters(
-    loss_function: ObjectiveContribution,
+    loss_function,
+    loss_kwargs,
     parameter_delta_ids,
     learning_rate: float = 0.01,
     n_epochs: int = 200,
@@ -23,8 +23,7 @@ def train_parameters(
 
     for epoch in range(n_epochs):
 
-        loss = loss_function(model)
-
+        loss = loss_function(model, **loss_kwargs)
         loss.backward()
 
         optimizer.step()
@@ -55,16 +54,18 @@ def test_energies_only(transform, metric):
         bond_k=5.0 * unit.kilojoule / unit.mole / unit.angstrom ** 2,
         bond_length=2.0 * unit.angstrom,
     )
-    loss_function = EnergyObjective(
+    loss_function = EnergyEntry(
         starting_system,
         conformers,
         reference_energies=reference_energies,
-        energy_metric=metric,
-        energy_transforms=transform,
     )
 
     actual_parameter_delta = train_parameters(
         loss_function,
+        dict(
+            energy_metric=metric,
+            energy_transforms=transform,
+        ),
         [("Bonds", "[#1:1]-[#17:2]", "k")],
         learning_rate=0.1,
     )
@@ -97,17 +98,19 @@ def test_forces_only(transform, metric, coordinate_system):
         bond_k=5.0 * unit.kilojoule / unit.mole / unit.angstrom ** 2,
         bond_length=2.0 * unit.angstrom,
     )
-    loss_function = EnergyObjective(
+    loss_function = EnergyEntry(
         starting_system,
         conformers,
         reference_gradients=reference_gradients,
-        gradient_metric=metric,
-        gradient_transforms=transform,
         gradient_coordinate_system=coordinate_system,
     )
 
     actual_parameter_delta = train_parameters(
         loss_function,
+        dict(
+            gradient_metric=metric,
+            gradient_transforms=transform,
+        ),
         [("Bonds", "[#1:1]-[#17:2]", "k")],
         learning_rate=0.1,
     )
@@ -155,20 +158,22 @@ def test_energies_and_forces(
         bond_k=5.0 * unit.kilojoule / unit.mole / unit.angstrom ** 2,
         bond_length=2.0 * unit.angstrom,
     )
-    loss_function = EnergyObjective(
+    loss_function = EnergyEntry(
         starting_system,
         conformers,
         reference_energies=reference_energies,
-        energy_transforms=energy_transform,
-        energy_metric=energy_metric,
         reference_gradients=reference_gradients,
-        gradient_metric=gradient_metric,
-        gradient_transforms=gradient_transform,
         gradient_coordinate_system=gradient_coordinate_system,
     )
 
     actual_parameter_delta = train_parameters(
         loss_function,
+        dict(
+            energy_transforms=energy_transform,
+            energy_metric=energy_metric,
+            gradient_metric=gradient_metric,
+            gradient_transforms=gradient_transform,
+        ),
         [("Bonds", "[#1:1]-[#17:2]", "k")],
         learning_rate=0.1,
     )
