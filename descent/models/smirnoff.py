@@ -1,3 +1,4 @@
+import io
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -5,6 +6,7 @@ import torch.nn
 from openff.interchange.models import PotentialKey
 from openff.toolkit.typing.engines.smirnoff import ForceField
 from smirnoffee.potentials import add_parameter_delta
+from typing_extensions import Literal
 
 from descent.models.models import VectorizedSystem
 from descent.utilities.smirnoff import perturb_force_field
@@ -166,3 +168,183 @@ class SMIRNOFFModel(torch.nn.Module):
                 for (smirks, attribute) in handler_ids
             ],
         )
+
+    def summarise(
+        self,
+        parameter_id_type: Literal["smirks", "id"] = "smirks",
+        print_to_terminal: bool = True,
+    ) -> str:
+        """
+
+        Args:
+            parameter_id_type: The type of ID to show for each parameter. Currently
+                this can either be the unique ``'id'`` associated with the parameter or
+                the ``'smirks'`` pattern that encodes the chemical environment the
+                parameter is applied to.
+            print_to_terminal: Whether to print the summary to the terminal
+
+        Returns:
+            A string containing the summary.
+        """
+
+        from openff.units.simtk import from_simtk
+
+        final_force_field = self.to_force_field()
+
+        # Reshape the data into dictionaries to make tabulation easier
+        table_data = defaultdict(lambda: defaultdict(dict))
+        attribute_units = {}
+
+        for handler_type, potential_key, attribute in [
+            (handler_type, potential_key, attribute)
+            for handler_type, parameter_ids in self._parameter_delta_ids.items()
+            for (potential_key, attribute) in parameter_ids
+        ]:
+
+            smirks = potential_key.id
+
+            attribute = (
+                attribute
+                if potential_key.mult is None
+                else f"{attribute}{potential_key.mult}"
+            )
+
+            initial_value = from_simtk(
+                getattr(
+                    self._initial_force_field[handler_type].parameters[smirks],
+                    attribute,
+                )
+            )
+            final_value = from_simtk(
+                getattr(final_force_field[handler_type].parameters[smirks], attribute)
+            )
+
+            if (handler_type, attribute) not in attribute_units:
+                attribute_units[(handler_type, attribute)] = initial_value.units
+
+            unit = attribute_units[(handler_type, attribute)]
+
+            attribute = f"{attribute} ({unit:P~})"
+
+            if parameter_id_type == "id":
+
+                smirks = self._initial_force_field[handler_type].parameters[smirks].id
+                smirks = smirks if smirks is not None else "NO ID"
+
+            table_data[handler_type][attribute][smirks] = (
+                initial_value.to(unit).m,
+                final_value.to(unit).m,
+            )
+
+        # Construct the final return value:
+        return_value = io.StringIO()
+
+        for handler_type, attribute_data in table_data.items():
+
+            print(f"\n{handler_type.center(80, '=')}\n", file=return_value)
+
+            attribute_headers = sorted(attribute_data)
+
+            attribute_widths = {
+                attribute: max(
+                    [
+                        len(f"{value:.4f}")
+                        for value_tuple in attribute_data[attribute].values()
+                        for value in value_tuple
+                    ]
+                )
+                * 2
+                + 1
+                for attribute in attribute_headers
+            }
+            attribute_widths = {
+                # Make sure the width of the column - 1 is divisible by 2
+                attribute: max(int((column_width - 1) / 2.0 + 0.5) * 2 + 1, 15)
+                for attribute, column_width in attribute_widths.items()
+            }
+
+            smirks_width = max(
+                len(smirks)
+                for smirks_data in attribute_data.values()
+                for smirks in smirks_data
+            )
+
+            first_header = (
+                " " * (smirks_width)
+                + "   "
+                + "   ".join(
+                    [
+                        attribute.center(attribute_widths[attribute], " ")
+                        for attribute in attribute_headers
+                    ]
+                )
+            )
+            second_header = (
+                " " * (smirks_width)
+                + "   "
+                + "   ".join(
+                    [
+                        "INITIAL".center((column_width - 1) // 2, " ")
+                        + " "
+                        + "FINAL".center((column_width - 1) // 2, " ")
+                        for attribute, column_width in attribute_widths.items()
+                    ]
+                )
+            )
+            border = (
+                "-" * smirks_width
+                + "   "
+                + "   ".join(
+                    [
+                        "-" * attribute_widths[attribute]
+                        for attribute in attribute_headers
+                    ]
+                )
+            )
+
+            smirks_data = defaultdict(dict)
+
+            for attribute in attribute_data:
+                for smirks, value_tuple in attribute_data[attribute].items():
+                    smirks_data[smirks][attribute] = value_tuple
+
+            print(border, file=return_value)
+            print(first_header, file=return_value)
+            print(second_header, file=return_value)
+            print(border, file=return_value)
+
+            for smirks in sorted(smirks_data):
+
+                def format_column(attr, value_tuple):
+
+                    if value_tuple is None:
+                        return " " * attribute_widths[attr]
+
+                    value_width = (attribute_widths[attr] - 1) // 2
+                    return (
+                        f"{value_tuple[0]:.4f}".ljust(value_width, " ")
+                        + " "
+                        + f"{value_tuple[1]:.4f}".ljust(value_width, " ")
+                    )
+
+                row = (
+                    f"{smirks.ljust(smirks_width)}"
+                    + "   "
+                    + "   ".join(
+                        [
+                            format_column(
+                                attribute, smirks_data[smirks].get(attribute, None)
+                            )
+                            for attribute in attribute_headers
+                        ]
+                    )
+                )
+
+                print(row, file=return_value)
+
+        return_value = return_value.getvalue()
+
+        if print_to_terminal:
+            print(return_value)
+
+        return return_value

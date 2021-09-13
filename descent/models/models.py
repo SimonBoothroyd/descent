@@ -12,3 +12,7 @@ class ParameterizationModel(Protocol):
 
     def forward(self, graph: Any) -> VectorizedSystem:
         """Outputs a vectorised view of a parameterized molecule."""
+
+    def summarise(self):
+        """Print a summary of the status of this model, such as the differences between
+        the initial and current state during training."""

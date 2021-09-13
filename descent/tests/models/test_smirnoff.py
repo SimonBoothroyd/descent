@@ -184,3 +184,38 @@ def test_model_to_force_field(mock_force_field, covariance_tensor):
         (4.0 + 1.0 * (1.0 if covariance_tensor is None else float(covariance_tensor)))
         * simtk_unit.angstrom,
     )
+
+
+@pytest.mark.parametrize("parameter_id_type", ["id", "smirks"])
+def test_model_summarise(mock_force_field, parameter_id_type):
+
+    mock_force_field["Bonds"].parameters["[#1:1]-[#17:2]"].id = "b1"
+
+    model = SMIRNOFFModel(
+        [
+            ("Bonds", "[#1:1]-[#17:2]", "length"),
+            ("Bonds", "[#1:1]-[#9:2]", "length"),
+            ("Bonds", "[#1:1]-[#17:2]", "k"),
+            ("Angles", "[#1:1]-[#8:2]-[#1:3]", "angle"),
+            ("Angles", "[#1:1]-[#8:2]-[#1:3]", "k"),
+        ],
+        mock_force_field,
+    )
+    model.parameter_delta = torch.nn.Parameter(torch.tensor([1.00001] * 5))
+    return_value = model.summarise(parameter_id_type=parameter_id_type)
+
+    assert return_value is not None
+    assert len(return_value) > 0
+
+    assert "Bonds" in return_value
+    assert "Angles" in return_value
+
+    assert " k (kJ/mol/Å²)       length (Å)  " in return_value
+    assert "  angle (deg)     k (kJ/deg²/mol)" in return_value
+
+    if parameter_id_type == "smirks":
+        assert "[#1:1]-[#17:2]" in return_value
+        assert "b1" not in return_value
+    else:
+        assert "[#1:1]-[#17:2]" not in return_value
+        assert "b1" in return_value
