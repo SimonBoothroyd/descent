@@ -105,8 +105,11 @@ ENV/
 # There are reports this comes from LLVM profiling, but also Xcode 9.
 *profraw
 
-# OSX
-*DS_Store
-
 # PyCharm
 .idea
+
+# OSX
+.DS_Store
+
+# Local development
+scratch

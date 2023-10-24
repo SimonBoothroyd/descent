@@ -1,0 +1,43 @@
+name: descent
+
+channels:
+  - conda-forge
+
+dependencies:
+
+  - python >=3.10
+  - pip
+
+  # Core packages
+  #  - smee
+
+  - pytorch
+  - pydantic
+
+  # Optional packages
+
+  ### Optimize
+  - scipy
+
+  # Examples
+  - jupyter
+  - nbconvert
+
+  # Dev / Testing
+  - ambertools
+  - rdkit
+
+  - versioneer
+
+  - pre-commit
+  - isort
+  - black
+  - flake8
+  - flake8-pyproject
+  - nbqa
+
+  - pytest
+  - pytest-cov
+  - pytest-mock
+
+  - codecov
