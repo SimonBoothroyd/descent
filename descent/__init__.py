@@ -1,12 +1,10 @@
 """
-DESCENT
+descent
 
-Optimize force field parameters against QC data using `pytorch`
+Optimize classical force field parameters against reference data
 """
 
-from ._version import get_versions
+from . import _version
 
-versions = get_versions()
-__version__ = versions["version"]
-__git_revision__ = versions["full-revisionid"]
-del get_versions, versions
+__version__ = _version.get_versions()["version"]
+__all__ = ["__version__"]
