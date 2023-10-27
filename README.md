@@ -7,6 +7,9 @@ DESCENT
 The `descent` framework aims to offer a modern API for training classical force field parameters (either from a 
 traditional format such as SMIRNOFF or from some ML model) against reference data using `pytorch`.
 
+This framework benefited hugely from [ForceBalance](https://github.com/leeping/forcebalance), and a significant
+number of learning from that project, and from Lee-Ping, have influenced the design of this one.
+
 ***Warning**: This code is currently experimental and under active development. If you are using this it, please be 
 aware that it is not guaranteed to provide correct results, the documentation and testing maybe be incomplete, and the
 API can change without notice.*

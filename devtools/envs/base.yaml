@@ -18,6 +18,8 @@ dependencies:
   - scipy
 
   # Optional packages
+  - rdkit
+  - matplotlib-base
 
   # Examples
   - jupyter

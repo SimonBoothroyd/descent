@@ -3,7 +3,7 @@ import logging
 import pytest
 import torch
 
-from descent.optimizers._lm import (
+from descent.optim._lm import (
     LevenbergMarquardt,
     _damping_factor_loss_fn,
     _solver,
@@ -82,7 +82,7 @@ def test_damping_factor_loss_fn(mocker):
     hessian = mocker.Mock()
 
     solver_fn = mocker.patch(
-        "descent.optimizers._lm._solver", autospec=True, return_value=(dx, 0.0)
+        "descent.optim._lm._solver", autospec=True, return_value=(dx, 0.0)
     )
 
     trust_radius = 12
@@ -118,7 +118,7 @@ def test_levenberg_marquardt_adaptive(mocker, caplog):
         ),
     ]
     mock_step_fn = mocker.patch(
-        "descent.optimizers._lm._step", autospec=True, side_effect=mock_dx_traj
+        "descent.optim._lm._step", autospec=True, side_effect=mock_dx_traj
     )
 
     mock_loss_traj = [
