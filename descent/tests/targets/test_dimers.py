@@ -72,7 +72,7 @@ def test_create_from_des(data_dir):
 
 
 def test_extract_smiles(mock_dimer):
-    expected_smiles = ["CO", "O"]
+    expected_smiles = ["[C:1]([O:2][H:6])([H:3])([H:4])[H:5]", "[O:1]([H:2])[H:3]"]
 
     dataset = create_dataset([mock_dimer, mock_dimer])
     smiles = extract_smiles(dataset)
@@ -117,6 +117,33 @@ def test_compute_dimer_energy():
     energies = compute_dimer_energy(top_a, top_b, tensor_ff, coords)
     assert energies.shape == expected_energies.shape
     assert torch.allclose(energies, expected_energies)
+
+
+def test_compute_dimer_energy_v_sites():
+    openff_ff = openff.toolkit.ForceField("tip4p_fb.offxml")
+
+    interchange = openff.interchange.Interchange.from_smirnoff(
+        openff_ff, openff.toolkit.Molecule.from_smiles("O").to_topology()
+    )
+    tensor_ff, [top] = smee.converters.convert_interchange(interchange)
+
+    coords = torch.tensor(
+        [
+            [
+                [-1.0, -1.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, -1.0, 0.0],
+                [-1.0, 2.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 2.0, 0.0],
+            ]
+        ],
+        dtype=torch.float64,
+    )
+
+    energies = compute_dimer_energy(top, top, tensor_ff, coords)
+    assert energies.shape == (1,)
+    assert not torch.isnan(energies).any()
 
 
 def test_predict(mock_dimer, mocker):
