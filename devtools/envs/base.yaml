@@ -13,11 +13,14 @@ dependencies:
 
   - pytorch
   - pydantic
+  - pyarrow
 
   ### Levenberg Marquardt
   - scipy
 
   # Optional packages
+  - rdkit
+  - matplotlib-base
 
   # Examples
   - jupyter
