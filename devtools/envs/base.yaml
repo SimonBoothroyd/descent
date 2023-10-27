@@ -9,15 +9,15 @@ dependencies:
   - pip
 
   # Core packages
-  #  - smee
+  - smee >=0.4.0
 
   - pytorch
   - pydantic
 
-  # Optional packages
-
-  ### Optimize
+  ### Levenberg Marquardt
   - scipy
+
+  # Optional packages
 
   # Examples
   - jupyter
