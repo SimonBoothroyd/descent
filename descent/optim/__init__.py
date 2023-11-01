@@ -1,5 +1,5 @@
 """Custom parameter optimizers."""
 
-from descent.optim._lm import LevenbergMarquardt, LevenbergMarquardtConfig
+from descent.optim._lm import LevenbergMarquardtConfig, levenberg_marquardt
 
-__all__ = ["LevenbergMarquardt", "LevenbergMarquardtConfig"]
+__all__ = ["LevenbergMarquardtConfig", "levenberg_marquardt"]
