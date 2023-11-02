@@ -252,7 +252,7 @@ def _step(
 
 def _hessian_diagonal_search(
     x: torch.Tensor,
-    closure: torch.Tensor,
+    closure: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
     closure_fn: ClosureFn,
     correct_fn: CorrectFn,
     damping_factor: torch.Tensor,
