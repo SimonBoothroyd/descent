@@ -2,12 +2,15 @@ import numpy
 import openmm.unit
 import pytest
 import smee.mm
+import torch
 
 from descent.targets.thermo import (
     DataEntry,
     SimulationKey,
+    _compute_averages,
     _convert_entry_to_system,
     _plan_simulations,
+    _predict,
     _simulate,
     create_dataset,
     default_config,
@@ -21,10 +24,8 @@ def mock_density_pure() -> DataEntry:
         "type": "density",
         "smiles_a": "CO",
         "x_a": 1.0,
-        "n_a": 0,
         "smiles_b": None,
         "x_b": None,
-        "n_b": None,
         "temperature": 298.15,
         "pressure": 1.0,
         "value": 0.785,
@@ -40,10 +41,8 @@ def mock_density_binary() -> DataEntry:
         "type": "density",
         "smiles_a": "CCO",
         "x_a": 0.5,
-        "n_a": 0,
         "smiles_b": "CO",
         "x_b": 0.5,
-        "n_b": 0,
         "temperature": 298.15,
         "pressure": 1.0,
         "value": 0.9,
@@ -59,10 +58,8 @@ def mock_hvap() -> DataEntry:
         "type": "hvap",
         "smiles_a": "CCCC",
         "x_a": 1.0,
-        "n_a": 0,
         "smiles_b": None,
         "x_b": None,
-        "n_b": None,
         "temperature": 298.15,
         "pressure": 1.0,
         "value": 1.234,
@@ -78,10 +75,8 @@ def mock_hmix() -> DataEntry:
         "type": "hmix",
         "smiles_a": "CCO",
         "x_a": 0.5,
-        "n_a": 0,
         "smiles_b": "CO",
         "x_b": 0.5,
-        "n_b": 0,
         "temperature": 298.15,
         "pressure": 1.0,
         "value": 0.4321,
@@ -95,7 +90,7 @@ def test_create_dataset(mock_density_pure, mock_density_binary):
     expected_data_entries = [mock_density_pure, mock_density_binary]
 
     dataset = create_dataset(*expected_data_entries)
-    assert len(dataset) == 1
+    assert len(dataset) == 2
 
     data_entries = dataset.to_pylist()
 
@@ -305,3 +300,160 @@ def test_simulation(tmp_cwd, mocker):
         expected_beta,
         config.production.pressure,
     )
+
+
+def test_compute_averages_reweighted(tmp_cwd, mocker):
+    mock_result = mocker.Mock()
+    mock_reweight = mocker.patch(
+        "smee.mm.reweight_ensemble_averages", autospec=True, return_value=mock_result
+    )
+
+    expected_hash = "1234567890abcdef"
+
+    mock_hash = mocker.MagicMock()
+    mock_hash.hexdigest.return_value = expected_hash
+
+    mocker.patch("hashlib.sha256", autospec=True, return_value=mock_hash)
+
+    phase = "vacuum"
+    key = SimulationKey(("CCCC",), (1,), 298.15, None)
+
+    mock_system = mocker.Mock()
+    mock_ff = mocker.Mock()
+
+    cached_dir = tmp_cwd / "cached"
+    cached_dir.mkdir()
+
+    expected_path = cached_dir / f"{phase}-{expected_hash}-frames.msgpack"
+    expected_path.touch()
+
+    result = _compute_averages(phase, key, mock_system, mock_ff, tmp_cwd, cached_dir)
+    assert result == mock_result
+
+    mock_reweight.assert_called_once_with(
+        mock_system, mock_ff, expected_path, 298.15 * openmm.unit.kelvin, None
+    )
+
+
+def test_compute_averages_simulated(tmp_cwd, mocker):
+    mock_result = mocker.Mock()
+    mocker.patch(
+        "smee.mm.reweight_ensemble_averages",
+        autospec=True,
+        side_effect=smee.mm._ops.NotEnoughSamplesError(),
+    )
+    mock_simulate = mocker.patch("descent.targets.thermo._simulate", autospec=True)
+    mock_compute = mocker.patch(
+        "smee.mm.compute_ensemble_averages", autospec=True, return_value=mock_result
+    )
+
+    expected_hash = "1234567890abcdef"
+
+    mock_hash = mocker.MagicMock()
+    mock_hash.hexdigest.return_value = expected_hash
+
+    mocker.patch("hashlib.sha256", autospec=True, return_value=mock_hash)
+
+    phase = "vacuum"
+    key = SimulationKey(("CCCC",), (1,), 298.15, None)
+
+    mock_system = mocker.Mock()
+    mock_ff = mocker.Mock()
+
+    cached_dir = tmp_cwd / "cached"
+    cached_dir.mkdir()
+    (cached_dir / f"{phase}-{expected_hash}-frames.msgpack").touch()
+
+    expected_path = tmp_cwd / f"{phase}-{expected_hash}-frames.msgpack"
+    expected_path.touch()
+
+    result = _compute_averages(phase, key, mock_system, mock_ff, tmp_cwd, cached_dir)
+    assert result == mock_result
+
+    mock_simulate.assert_called_once_with(
+        mock_system, mock_ff, mocker.ANY, expected_path
+    )
+    mock_compute.assert_called_once_with(
+        mock_system, mock_ff, expected_path, 298.15 * openmm.unit.kelvin, None
+    )
+
+
+def test_predict_density(mock_density_pure, mocker):
+    topologies = {"CO": mocker.Mock()}
+    key, system = _convert_entry_to_system(mock_density_pure, topologies, 123)
+
+    expected_result = mocker.Mock()
+
+    averages = {"bulk": {key: {"density": expected_result}}}
+    systems = {"bulk": {key: system}}
+
+    result = _predict(mock_density_pure, {"bulk": key}, averages, systems)
+    assert result == expected_result
+
+
+def test_predict_hvap(mock_hvap, mocker):
+    topologies = {"CCCC": mocker.Mock()}
+
+    n_mols = 123
+
+    key_bulk, system_bulk = _convert_entry_to_system(mock_hvap, topologies, n_mols)
+    key_vaccum = SimulationKey(("CCCC",), (1,), mock_hvap["temperature"], None)
+
+    system_vacuum = smee.TensorSystem([topologies["CCCC"]], [1], False)
+
+    potential_bulk = torch.tensor([7.0])
+    potential_vacuum = torch.tensor([3.0])
+
+    averages = {
+        "bulk": {key_bulk: {"potential_energy": potential_bulk}},
+        "vacuum": {key_vaccum: {"potential_energy": potential_vacuum}},
+    }
+    systems = {"bulk": {key_bulk: system_bulk}, "vacuum": {key_vaccum: system_vacuum}}
+    keys = {"bulk": key_bulk, "vacuum": key_vaccum}
+
+    rt = (
+        mock_hvap["temperature"] * openmm.unit.kelvin * openmm.unit.MOLAR_GAS_CONSTANT_R
+    ).value_in_unit(openmm.unit.kilocalorie_per_mole)
+
+    expected = potential_vacuum - potential_bulk / n_mols + rt
+
+    result = _predict(mock_hvap, keys, averages, systems)
+    assert result == pytest.approx(expected)
+
+
+def test_predict_hmix(mock_hmix, mocker):
+    topologies = {"CO": mocker.Mock(), "CCO": mocker.Mock()}
+
+    n_mols = 100
+
+    key_bulk, system_bulk = _convert_entry_to_system(mock_hmix, topologies, n_mols)
+    key_0 = SimulationKey(
+        ("CCO",), (n_mols,), mock_hmix["temperature"], mock_hmix["pressure"]
+    )
+    key_1 = SimulationKey(
+        ("CO",), (n_mols,), mock_hmix["temperature"], mock_hmix["pressure"]
+    )
+
+    system_0 = smee.TensorSystem([topologies["CCO"]], [n_mols], False)
+    system_1 = smee.TensorSystem([topologies["CO"]], [n_mols], False)
+
+    enthalpy_bulk = torch.tensor([16.0])
+    enthalpy_0 = torch.tensor([4.0])
+    enthalpy_1 = torch.tensor([3.0])
+
+    averages = {
+        "bulk": {
+            key_bulk: {"enthalpy": enthalpy_bulk},
+            key_0: {"enthalpy": enthalpy_0},
+            key_1: {"enthalpy": enthalpy_1},
+        },
+    }
+    systems = {"bulk": {key_bulk: system_bulk, key_0: system_0, key_1: system_1}}
+    keys = {"bulk": key_bulk, "bulk_0": key_0, "bulk_1": key_1}
+
+    expected = (
+        enthalpy_bulk / n_mols - 0.5 * enthalpy_0 / n_mols - 0.5 * enthalpy_1 / n_mols
+    )
+
+    result = _predict(mock_hmix, keys, averages, systems)
+    assert result == pytest.approx(expected)

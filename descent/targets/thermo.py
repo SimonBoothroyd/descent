@@ -48,31 +48,46 @@ class DataEntry(typing.TypedDict):
     """Represents a single experimental data point."""
 
     type: DataType
+    """The type of data point."""
 
     smiles_a: str
+    """The SMILES definition of the first component."""
     x_a: float | None
-    n_a: int | None
+    """The mole fraction of the first component. This must be set to 1.0 if the data"""
 
     smiles_b: str | None
+    """The SMILES definition of the second component if present."""
     x_b: float | None
-    n_b: int | None
+    """The mole fraction of the second component if present."""
 
     temperature: float
+    """The temperature at which the data point was measured."""
     pressure: float
+    """The pressure at which the data point was measured."""
 
     value: float
+    """The value of the data point."""
     std: float | None
+    """The standard deviation of the data point if available."""
     units: str
+    """The units of the data point."""
 
     source: str
+    """The source of the data point."""
 
 
 class SimulationKey(typing.NamedTuple):
+    """A key used to identify a simulation."""
+
     smiles: tuple[str, ...]
+    """The SMILES definitions of the components present in the system."""
     counts: tuple[int, ...]
+    """The number of copies of each component present in the system."""
 
     temperature: float
+    """The temperature [K] at which the simulation was run."""
     pressure: float | None
+    """The pressure [atm] at which the simulation was run."""
 
 
 class SimulationConfig(pydantic.BaseModel):
@@ -101,12 +116,27 @@ _SystemDict = dict[SimulationKey, smee.TensorSystem]
 
 
 def create_dataset(*rows: DataEntry) -> pyarrow.Table:
+    """Create a dataset from a list of existing data points.
+
+    Args:
+        rows: The data points to create the dataset from.
+
+    Returns:
+        The created dataset.
+    """
     # TODO: validate rows
     return pyarrow.Table.from_pylist([*rows], schema=DATA_SCHEMA)
 
 
 def extract_smiles(dataset: pyarrow.Table) -> list[str]:
-    """Return a list of unique SMILES strings in the dataset."""
+    """Return a list of unique SMILES strings in the dataset.
+
+    Args:
+        dataset: The dataset to extract the SMILES strings from.
+
+    Returns:
+        The unique SMILES strings with full atom mapping.
+    """
 
     from rdkit import Chem
 
@@ -125,6 +155,17 @@ def extract_smiles(dataset: pyarrow.Table) -> list[str]:
 def _convert_entry_to_system(
     entry: DataEntry, topologies: dict[str, smee.TensorTopology], max_mols: int
 ) -> tuple[SimulationKey, smee.TensorSystem]:
+    """Convert a data entry into a system ready to simulate.
+
+    Args:
+        entry: The data entry to convert.
+        topologies: The topologies of the molecules present in the dataset, with keys
+            of mapped SMILES patterns.
+        max_mols: The maximum number of molecules to simulate.
+
+    Returns:
+        The system and its associated key.
+    """
     smiles_a = entry["smiles_a"]
     smiles_b = entry["smiles_b"]
 
@@ -156,6 +197,15 @@ def _convert_entry_to_system(
 
 
 def _bulk_config(temperature: float, pressure: float) -> SimulationConfig:
+    """Return a default simulation configuration for simulations of the bulk phase.
+
+    Args:
+        temperature: The temperature [K] at which to run the simulation.
+        pressure: The pressure [atm] at which to run the simulation.
+
+    Returns:
+        The default simulation configuration.
+    """
     temperature = temperature * openmm.unit.kelvin
     pressure = pressure * openmm.unit.atmosphere
 
@@ -190,6 +240,15 @@ def _bulk_config(temperature: float, pressure: float) -> SimulationConfig:
 
 
 def _vacuum_config(temperature: float, pressure: float | None) -> SimulationConfig:
+    """Return a default simulation configuration for simulations of the vacuum phase.
+
+    Args:
+        temperature: The temperature [K] at which to run the simulation.
+        pressure: The pressure [atm] at which to run the simulation.
+
+    Returns:
+        The default simulation configuration.
+    """
     temperature = temperature * openmm.unit.kelvin
     assert pressure is None
 
@@ -218,7 +277,16 @@ def _vacuum_config(temperature: float, pressure: float | None) -> SimulationConf
 def default_config(
     phase: Phase, temperature: float, pressure: float | None
 ) -> SimulationConfig:
-    """Return a default simulation configuration for the specified phase."""
+    """Return a default simulation configuration for the specified phase.
+
+    Args:
+        phase: The phase to return the default configuration for.
+        temperature: The temperature [K] at which to run the simulation.
+        pressure: The pressure [atm] at which to run the simulation.
+
+    Returns:
+        The default simulation configuration.
+    """
 
     if phase.lower() == "bulk":
         return _bulk_config(temperature, pressure)
@@ -231,6 +299,16 @@ def default_config(
 def _plan_simulations(
     entries: list[DataEntry], topologies: dict[str, smee.TensorTopology]
 ) -> tuple[dict[Phase, _SystemDict], list[dict[str, SimulationKey]]]:
+    """Plan the simulations required to compute the properties in a dataset.
+
+    Args:
+        entries: The entries in the dataset.
+        topologies: The topologies of the molecules present in the dataset, with keys
+            of mapped SMILES patterns.
+
+    Returns:
+        The systems to simulate and the simulations required to compute each property.
+    """
     systems_per_phase: dict[Phase, _SystemDict] = {phase: {} for phase in PHASES}
     simulations_per_entry = []
 
@@ -281,6 +359,14 @@ def _simulate(
     config: SimulationConfig,
     output_path: pathlib.Path,
 ):
+    """Simulate a system.
+
+    Args:
+        system: The system to simulate.
+        force_field: The force field to use.
+        config: The simulation configuration to use.
+        output_path: The path at which to write the simulation trajectory.
+    """
     coords, box_vectors = smee.mm.generate_system_coords(system, config.gen_coords)
 
     beta = 1.0 / (openmm.unit.MOLAR_GAS_CONSTANT_R * config.production.temperature)
