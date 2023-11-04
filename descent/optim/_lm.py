@@ -99,6 +99,37 @@ class LevenbergMarquardtConfig(pydantic.BaseModel):
         description="The threshold above which the step is considered high quality.",
     )
 
+    convergence_loss: float = pydantic.Field(
+        1.0e-4,
+        description="The loss will be considered converged if its std deviation over "
+        "the last `n_convergence_steps` steps is less than this value.",
+        gt=0.0,
+    )
+    convergence_gradient: float = pydantic.Field(
+        1.0e-3,
+        description="The gradient will be considered converged if its norm is less than"
+        "this value.",
+        gt=0.0,
+    )
+    convergence_step: float = pydantic.Field(
+        1.0e-4,
+        description="The step size will be considered converged if its norm is less "
+        "than this value.",
+        gt=0.0,
+    )
+    n_convergence_steps: int = pydantic.Field(
+        2,
+        description="The number of steps to consider when checking for convergence "
+        "in the loss.",
+    )
+    n_convergence_criteria: int = pydantic.Field(
+        1,
+        description="The number of convergence criteria that must be satisfied before "
+        "the optimization is considered converged. If 0, no convergence criteria will "
+        "be used and the optimizer will run for ``max_steps`` full steps.",
+        ge=0,
+    )
+
     max_steps: int = pydantic.Field(
         ..., description="The maximum number of full steps to perform.", gt=0
     )
@@ -387,6 +418,61 @@ def _update_trust_radius(
     return trust_radius
 
 
+def _has_converged(
+    dx: torch.Tensor,
+    loss_history: list[torch.Tensor],
+    gradient: torch.Tensor,
+    step_quality: float,
+    config: LevenbergMarquardtConfig,
+) -> bool:
+    """Check whether the optimization has converged.
+
+    Args:
+        dx: The current step.
+        loss_history: The loss history.
+        gradient: The current gradient.
+        step_quality: The quality of the current step.
+        config: The optimizer config.
+
+    Returns:
+        Whether the optimization has converged.
+    """
+    if config.n_convergence_criteria == 0:
+        return False
+
+    if step_quality <= config.quality_threshold_low:
+        # don't converge on low quality steps
+        return False
+
+    grad_norm = torch.linalg.norm(gradient)
+    grad_converged = grad_norm < config.convergence_gradient
+
+    step_norm = torch.linalg.norm(dx)
+    step_converged = 0.0 <= step_norm < config.convergence_step
+
+    loss_std = (
+        torch.inf
+        if len(loss_history) == 0
+        else torch.std(torch.stack(loss_history[-config.n_convergence_steps :]))
+    )
+    loss_converged = (
+        len(loss_history) >= config.n_convergence_steps
+        and loss_std < config.convergence_loss
+    )
+
+    if grad_converged:
+        _LOGGER.info(f"gradient norm is converged: ({grad_norm:.2e})")
+    if step_converged:
+        _LOGGER.info(f"step size is converged: ({step_norm:.2e})")
+    if loss_converged:
+        _LOGGER.info(f"loss is converged: ({loss_std:.2e})")
+
+    return bool(
+        sum((grad_converged, step_converged, loss_converged))
+        >= config.n_convergence_criteria
+    )
+
+
 @torch.no_grad()
 def levenberg_marquardt(
     x: torch.Tensor,
@@ -421,6 +507,10 @@ def levenberg_marquardt(
 
     closure_prev = closure_fn(x, True, True)
     trust_radius = torch.tensor(config.trust_radius).to(x.device)
+
+    loss_history = []
+
+    has_converged = False
 
     for step in range(config.max_steps):
         loss_prev, gradient_prev, hessian_prev = closure_prev
@@ -465,9 +555,19 @@ def levenberg_marquardt(
 
         if accept_step:
             x.data.copy_(x_next.data)
+            loss_history.append(loss.detach().cpu().clone())
 
         closure_prev = (loss, gradient, hessian)
 
-        _LOGGER.info(f"step={step} loss={loss.detach().cpu().item()}")
+        _LOGGER.info(f"step={step} loss={loss.detach().cpu().item():.4e}")
+
+        if _has_converged(dx, loss_history, gradient, step_quality, config):
+            _LOGGER.info(f"optimization has converged after {step + 1} steps.")
+            has_converged = True
+
+            break
+
+    if not has_converged:
+        _LOGGER.info(f"optimization has not converged after {config.max_steps} steps.")
 
     return x
