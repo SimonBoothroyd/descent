@@ -6,6 +6,7 @@ import torch
 from descent.optim._lm import (
     LevenbergMarquardtConfig,
     _damping_factor_loss_fn,
+    _has_converged,
     _hessian_diagonal_search,
     _solver,
     _step,
@@ -139,6 +140,65 @@ def test_damping_factor_loss_fn(mocker):
 
     expected_difference = (dx_norm - trust_radius) ** 2
     assert torch.isclose(difference, expected_difference)
+
+
+@pytest.mark.parametrize(
+    "n_convergence_criteria, n_convergence_steps, step_quality, expected_converged, expected_logs",
+    [
+        (0, 2, 1.0, False, []),
+        (1, 2, 0.0, False, []),
+        (
+            1,
+            2,
+            1.0,
+            True,
+            [
+                "gradient norm is converged",
+                "step size is converged",
+                "loss is converged",
+            ],
+        ),
+        (
+            3,
+            3,
+            1.0,
+            False,
+            [
+                "gradient norm is converged",
+                "step size is converged",
+            ],
+        ),
+    ],
+)
+def test_has_converged(
+    n_convergence_criteria,
+    n_convergence_steps,
+    step_quality,
+    expected_converged,
+    expected_logs,
+    caplog,
+):
+    dx = torch.tensor([0.0, 0.01, 0.0])
+    gradient = torch.tensor([0.0, -0.02, 0.0])
+    loss_history = [torch.tensor(1.0), torch.tensor(0.1), torch.tensor(0.11)]
+
+    with caplog.at_level(logging.INFO):
+        has_converged = _has_converged(
+            dx,
+            loss_history,
+            gradient,
+            step_quality,
+            LevenbergMarquardtConfig(
+                max_steps=1,
+                n_convergence_steps=n_convergence_steps,
+                n_convergence_criteria=n_convergence_criteria,
+                convergence_step=0.2,
+                convergence_loss=0.2,
+                convergence_gradient=0.2,
+            ),
+        )
+    assert has_converged == expected_converged
+    assert all(log in caplog.text for log in expected_logs)
 
 
 def test_levenberg_marquardt_adaptive(mocker, caplog):
