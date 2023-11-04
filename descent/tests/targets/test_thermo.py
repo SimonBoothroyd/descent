@@ -15,6 +15,7 @@ from descent.targets.thermo import (
     create_dataset,
     default_config,
     extract_smiles,
+    predict,
 )
 
 
@@ -457,3 +458,47 @@ def test_predict_hmix(mock_hmix, mocker):
 
     result = _predict(mock_hmix, keys, averages, systems)
     assert result == pytest.approx(expected)
+
+
+def test_predict(tmp_cwd, mock_density_pure, mocker):
+    dataset = create_dataset(mock_density_pure)
+
+    mock_topologies = {"CO": mocker.Mock()}
+    mock_ff = mocker.Mock()
+
+    mock_density = torch.tensor(123.0)
+
+    mock_compute = mocker.patch(
+        "descent.targets.thermo._compute_averages",
+        autospec=True,
+        return_value={"density": mock_density},
+    )
+
+    mock_scale = 3.0
+
+    y_ref, y_pred = predict(
+        dataset, mock_ff, mock_topologies, tmp_cwd, None, {"density": mock_scale}
+    )
+
+    mock_compute.assert_called_once_with(
+        "bulk",
+        SimulationKey(
+            ("CO",),
+            (256,),
+            mock_density_pure["temperature"],
+            mock_density_pure["pressure"],
+        ),
+        mocker.ANY,
+        mock_ff,
+        tmp_cwd,
+        None,
+    )
+
+    expected_y_ref = torch.tensor([mock_density_pure["value"] * mock_scale])
+    expected_y_pred = torch.tensor([mock_density * mock_scale])
+
+    assert y_ref.shape == expected_y_ref.shape
+    assert torch.allclose(y_ref, expected_y_ref)
+
+    assert y_pred.shape == expected_y_pred.shape
+    assert torch.allclose(y_pred, expected_y_pred)

@@ -507,7 +507,20 @@ def predict(
     cached_dir: pathlib.Path | None = None,
     per_type_scales: dict[DataType, float] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Predict the properties in a dataset using molecular simulation."""
+    """Predict the properties in a dataset using molecular simulation, or by reweighting
+    previous simulation data.
+
+    Args:
+        dataset: The dataset to predict the properties of.
+        force_field: The force field to use.
+        topologies: The topologies of the molecules present in the dataset, with keys
+            of mapped SMILES patterns.
+        output_dir: The directory to write the simulation trajectories to.
+        cached_dir: The (optional) directory to read cached simulation trajectories
+            from.
+        per_type_scales: The scale factor to apply to each data type. A default of 1.0
+            will be used for any data type not specified.
+    """
 
     entries: list[DataEntry] = dataset.to_pylist()
 
@@ -531,6 +544,8 @@ def predict(
         value = _predict(entry, keys, averages, required_simulations)
 
         predicted.append(value * per_type_scales.get(entry["type"], 1.0))
-        reference.append(entry["value"] * per_type_scales.get(entry["type"], 1.0))
+        reference.append(
+            torch.tensor(entry["value"]) * per_type_scales.get(entry["type"], 1.0)
+        )
 
     return torch.stack(reference), torch.stack(predicted)
