@@ -20,7 +20,8 @@ _LOGGER = logging.getLogger(__name__)
 
 
 ClosureFn = typing.Callable[
-    [torch.Tensor, bool, bool], tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+    [torch.Tensor, bool, bool],
+    tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None],
 ]
 CorrectFn = typing.Callable[[torch.Tensor], torch.Tensor]
 
@@ -100,19 +101,19 @@ class LevenbergMarquardtConfig(pydantic.BaseModel):
     )
 
     convergence_loss: float = pydantic.Field(
-        1.0e-4,
+        0.1,
         description="The loss will be considered converged if its std deviation over "
         "the last `n_convergence_steps` steps is less than this value.",
         gt=0.0,
     )
     convergence_gradient: float = pydantic.Field(
-        1.0e-3,
+        0.1,
         description="The gradient will be considered converged if its norm is less than"
         "this value.",
         gt=0.0,
     )
     convergence_step: float = pydantic.Field(
-        1.0e-4,
+        0.01,
         description="The step size will be considered converged if its norm is less "
         "than this value.",
         gt=0.0,
@@ -123,7 +124,7 @@ class LevenbergMarquardtConfig(pydantic.BaseModel):
         "in the loss.",
     )
     n_convergence_criteria: int = pydantic.Field(
-        1,
+        2,
         description="The number of convergence criteria that must be satisfied before "
         "the optimization is considered converged. If 0, no convergence criteria will "
         "be used and the optimizer will run for ``max_steps`` full steps.",
