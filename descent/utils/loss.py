@@ -51,3 +51,23 @@ def to_closure(
         return loss.detach(), gradient, hessian
 
     return closure_fn
+
+
+def approximate_hessian(x: torch.Tensor, y_pred: torch.Tensor):
+    """Compute the outer product approximation of the hessian of a least squares
+    loss function of the sum ``sum((y_pred - y_ref)**2)``.
+
+    Args:
+        x: The parameter tensor with ``shape=(n_parameters,)``.
+        y_pred: The values predicted using ``x`` with ``shape=(n_predications,)``.
+
+    Returns:
+        The outer product approximation of the hessian with ``shape=n_parameters
+    """
+
+    y_pred_grad = [torch.autograd.grad(y, x, retain_graph=True)[0] for y in y_pred]
+    y_pred_grad = torch.stack(y_pred_grad, dim=0)
+
+    return (
+        2.0 * torch.einsum("bi,bj->bij", y_pred_grad, y_pred_grad).sum(dim=0)
+    ).detach()
