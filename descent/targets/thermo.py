@@ -1,7 +1,9 @@
 """Train against thermodynamic properties."""
 import contextlib
 import hashlib
+import logging
 import pathlib
+import pickle
 import typing
 
 import numpy
@@ -12,6 +14,9 @@ import smee.mm
 import torch
 
 import descent.utils.molecule
+
+_LOGGER = logging.getLogger(__name__)
+
 
 DataType = typing.Literal["density", "hvap", "hmix"]
 
@@ -235,7 +240,7 @@ def _bulk_config(temperature: float, pressure: float) -> SimulationConfig:
             n_steps=500000,
             timestep=2.0 * openmm.unit.femtosecond,
         ),
-        production_frequency=500,
+        production_frequency=1000,
     )
 
 
@@ -396,7 +401,7 @@ def _compute_averages(
     output_dir: pathlib.Path,
     cached_dir: pathlib.Path | None,
 ) -> dict[str, torch.Tensor]:
-    traj_hash = hashlib.sha256(key, usedforsecurity=False).hexdigest()
+    traj_hash = hashlib.sha256(pickle.dumps(key)).hexdigest()
     traj_name = f"{phase}-{traj_hash}-frames.msgpack"
 
     cached_path = None if cached_dir is None else cached_dir / traj_name
@@ -409,6 +414,9 @@ def _compute_averages(
             return smee.mm.reweight_ensemble_averages(
                 system, force_field, cached_path, temperature, pressure
             )
+
+    if cached_path is not None:
+        _LOGGER.debug(f"unable to re-weight {key}: data exists={cached_path.exists()}")
 
     output_path = output_dir / traj_name
 
@@ -548,4 +556,7 @@ def predict(
             torch.tensor(entry["value"]) * per_type_scales.get(entry["type"], 1.0)
         )
 
-    return torch.stack(reference), torch.stack(predicted)
+    predicted = torch.stack(predicted)
+    reference = torch.stack(reference).to(predicted.device)
+
+    return reference, predicted
