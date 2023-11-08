@@ -102,10 +102,7 @@ def test_extract_smiles(mock_density_pure, mock_density_binary):
     dataset = create_dataset(mock_density_pure, mock_density_binary)
     smiles = extract_smiles(dataset)
 
-    expected_smiles = [
-        "[H:1][C:4]([H:3])([O:5][H:2])[C:9]([H:6])([H:7])[H:8]",
-        "[H:1][O:3][C:6]([H:2])([H:4])[H:5]",
-    ]
+    expected_smiles = ["CCO", "CO"]
     assert smiles == expected_smiles
 
 
@@ -278,7 +275,7 @@ def test_simulation(tmp_cwd, mocker):
     expected_output = tmp_cwd / "frames.msgpack"
     _simulate(mock_system, mock_ff, config, expected_output)
 
-    mock_gen_coords.assert_called_once_with(mock_system, config.gen_coords)
+    mock_gen_coords.assert_called_once_with(mock_system, mock_ff, config.gen_coords)
 
     mock_simulate.assert_called_once_with(
         mock_system,

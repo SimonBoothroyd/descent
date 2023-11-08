@@ -12,8 +12,7 @@ import pyarrow
 import pydantic
 import smee.mm
 import torch
-
-import descent.utils.molecule
+from rdkit import Chem
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -129,6 +128,15 @@ def create_dataset(*rows: DataEntry) -> pyarrow.Table:
     Returns:
         The created dataset.
     """
+
+    for row in rows:
+        row["smiles_a"] = Chem.MolToSmiles(Chem.MolFromSmiles(row["smiles_a"]))
+
+        if row["smiles_b"] is None:
+            continue
+
+        row["smiles_b"] = Chem.MolToSmiles(Chem.MolFromSmiles(row["smiles_b"]))
+
     # TODO: validate rows
     return pyarrow.Table.from_pylist([*rows], schema=DATA_SCHEMA)
 
@@ -142,19 +150,11 @@ def extract_smiles(dataset: pyarrow.Table) -> list[str]:
     Returns:
         The unique SMILES strings with full atom mapping.
     """
-
-    from rdkit import Chem
-
     smiles_a = dataset["smiles_a"].drop_null().unique().to_pylist()
     smiles_b = dataset["smiles_b"].drop_null().unique().to_pylist()
 
     smiles_unique = sorted({*smiles_a, *smiles_b})
-    smiles_mapped = [
-        descent.utils.molecule.mol_to_smiles(Chem.MolFromSmiles(smiles))
-        for smiles in smiles_unique
-    ]
-
-    return smiles_mapped
+    return smiles_unique
 
 
 def _convert_entry_to_system(
@@ -372,7 +372,9 @@ def _simulate(
         config: The simulation configuration to use.
         output_path: The path at which to write the simulation trajectory.
     """
-    coords, box_vectors = smee.mm.generate_system_coords(system, config.gen_coords)
+    coords, box_vectors = smee.mm.generate_system_coords(
+        system, force_field, config.gen_coords
+    )
 
     beta = 1.0 / (openmm.unit.MOLAR_GAS_CONSTANT_R * config.production.temperature)
 
@@ -410,7 +412,7 @@ def _compute_averages(
     pressure = None if key.pressure is None else key.pressure * openmm.unit.atmospheres
 
     if cached_path is not None and cached_path.exists():
-        with contextlib.suppress(smee.mm._ops.NotEnoughSamplesError):
+        with contextlib.suppress(smee.mm.NotEnoughSamplesError):
             return smee.mm.reweight_ensemble_averages(
                 system, force_field, cached_path, temperature, pressure
             )
