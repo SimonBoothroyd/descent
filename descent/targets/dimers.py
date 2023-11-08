@@ -295,6 +295,8 @@ def report(
     force_fields: dict[str, smee.TensorForceField],
     topologies: dict[str, smee.TensorTopology],
     output_path: pathlib.Path,
+    sort_by: typing.Optional[str] = None,
+    ascending: bool = True
 ):
     """Generate a report comparing the predicted and reference energies of each dimer.
 
@@ -304,10 +306,15 @@ def report(
         topologies: The topologies of each monomer. Each key should be a fully
             mapped SMILES string.
         output_path: The path to write the report to.
+        sort_by: The name of the force field in force_fields which the results should be sorted by.
+        ascending: If the sorting should be in ascending order of rmse `True` or descending `False`.
     """
     import pandas
+    import numpy
+    from collections import defaultdict
 
     rows = []
+    all_energies = defaultdict(list)
 
     for dimer in dataset.to_pylist():
         energies = {"ref": torch.tensor(dimer["energy"])}
@@ -316,12 +323,36 @@ def report(
             for force_field_name, force_field in force_fields.items()
         )
 
+        all_energies["ref"].extend(energies["ref"])
+
         plot_img = _plot_energies(energies)
 
         mol_img = descent.utils.reporting.mols_to_img(
             dimer["smiles_a"], dimer["smiles_b"]
         )
-        rows.append({"Dimer": mol_img, "Energy [kcal/mol]": plot_img})
+
+        row_data = {
+                "Dimer": mol_img,
+                "Energy [kcal/mol]": plot_img
+        }
+        for force_field_name in force_fields.keys():
+            rmse_name = f"{force_field_name} RMSE"
+            row_data[rmse_name] = numpy.sqrt(numpy.mean((energies["ref"].detach().numpy() - energies[force_field_name].detach().numpy()) ** 2))
+            # collect all energies to compute overall rmse
+            all_energies[rmse_name].extend(energies[force_field_name].detach().numpy())
+
+        rows.append(row_data)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if sort_by is not None:
+        sorting_key = f"{sort_by} RMSE"
+        rows = sorted(rows, key=lambda x: x[sorting_key], reverse=not ascending)
+
+    # add the overall rmse
+    rows.append(
+        dict(
+            (rmse_name, numpy.sqrt(numpy.mean((numpy.array(all_energies["ref"]) - numpy.array(ff_energy)) ** 2 ))) for rmse_name, ff_energy in all_energies.items() if rmse_name != "ref"
+        )
+    )
     return pandas.DataFrame(rows).to_html(output_path, escape=False, index=False)
