@@ -234,6 +234,11 @@ def test_levenberg_marquardt_adaptive(mocker, caplog):
             torch.tensor([19.0, 20.0]),
             torch.tensor([[21.0, 22.0], [23.0, 24.0]]),
         ),
+        (
+            torch.tensor(-2.11),
+            torch.tensor([19.0, 20.0]),
+            torch.tensor([[21.0, 22.0], [23.0, 24.0]]),
+        ),
     ]
     expected_loss_traj = [
         (
@@ -264,9 +269,10 @@ def test_levenberg_marquardt_adaptive(mocker, caplog):
         # previous step should have been rejected
         torch.tensor([0.1, 0.2]),
         torch.tensor([0.15, 0.21]),
+        torch.tensor([0.2, 0.3]),
     ]
-    assert x_new.shape == expected_x_traj[-1].shape
-    assert torch.allclose(x_new, expected_x_traj[-1])
+    assert x_new.shape == expected_x_traj[-2].shape  # -2 has lowest loss.
+    assert torch.allclose(x_new, expected_x_traj[-2])
 
     trust_radius_messages = [m for m in caplog.messages if "trust radius" in m]
 

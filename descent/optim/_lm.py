@@ -512,7 +512,7 @@ def levenberg_marquardt(
             whether the step was accepted or rejected.
 
     Returns:
-        The optimized parameters.
+        The parameters that minimize the loss.
     """
 
     x = x.clone().detach().requires_grad_(x.requires_grad)
@@ -526,8 +526,9 @@ def levenberg_marquardt(
     trust_radius = torch.tensor(config.trust_radius).to(x.device)
 
     loss_history = []
-
     has_converged = False
+
+    best_x, best_loss = x.clone(), closure_prev[0]
 
     for step in range(config.max_steps):
         loss_prev, gradient_prev, hessian_prev = closure_prev
@@ -574,6 +575,9 @@ def levenberg_marquardt(
             x.data.copy_(x_next.data)
             loss_history.append(loss.detach().cpu().clone())
 
+        if loss < best_loss:
+            best_x, best_loss = x.clone(), loss.detach().clone()
+
         closure_prev = (loss, gradient, hessian)
 
         report_fn(step, x, loss, gradient, hessian, step_quality, accept_step)
@@ -588,4 +592,4 @@ def levenberg_marquardt(
     if not has_converged:
         _LOGGER.info(f"optimization has not converged after {config.max_steps} steps.")
 
-    return x
+    return best_x
