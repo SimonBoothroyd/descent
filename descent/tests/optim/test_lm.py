@@ -255,7 +255,7 @@ def test_levenberg_marquardt_adaptive(mocker, caplog):
 
     with caplog.at_level(logging.INFO):
         x_new = levenberg_marquardt(
-            x, mock_loss_fn, None, config=LevenbergMarquardtConfig(max_steps=3)
+            x, LevenbergMarquardtConfig(max_steps=3), mock_loss_fn, None
         )
 
     expected_x_traj = [
@@ -330,7 +330,7 @@ def test_levenberg_marquardt(
 
     config = LevenbergMarquardtConfig(max_steps=n_steps, mode=mode)
 
-    theta_new = levenberg_marquardt(theta, closure_fn, None, config)
+    theta_new = levenberg_marquardt(theta, config, closure_fn, None)
 
     assert theta_new.shape == expected.shape
     assert torch.allclose(theta_new, expected)
