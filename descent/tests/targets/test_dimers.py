@@ -201,6 +201,6 @@ def test_report(tmp_cwd, mock_dimer, mocker):
     report(dataset, {"A": mock_ff}, mock_tops, expected_path)
 
     assert expected_path.exists()
-    assert expected_path.read_text().startswith("<style>.itable")
+    assert expected_path.read_text().startswith("<!DOCTYPE html>")
 
     mock_predict_fn.assert_called_once_with(mocker.ANY, mock_ff, mock_tops)

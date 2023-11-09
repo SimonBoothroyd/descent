@@ -21,7 +21,7 @@ dependencies:
   # Optional packages
   - rdkit
   - matplotlib-base
-  - itables
+  - panel
 
   # Examples
   - jupyter

@@ -353,7 +353,7 @@ def report(
             delta_sqr_total[force_field_name] += delta_sqr
 
             rmse = torch.sqrt(delta_sqr / len(energies["ref"]))
-            data_row[f"RMSE {force_field_name} [kcal/mol]"] = rmse.item()
+            data_row[f"RMSE {force_field_name}"] = rmse.item()
 
         delta_sqr_count += len(energies["ref"])
 
@@ -369,16 +369,43 @@ def report(
         for force_field_name in force_fields
     ]
 
-    html_style = _pandas_html_style()
-    html = "\n".join(
-        [
-            html_style,
-            "<h2>Statistics</h2>",
-            _pandas_to_html(pandas.DataFrame(rmse_total_rows)),
-            "<h2>Energy Plots</h2>",
-            _pandas_to_html(pandas.DataFrame(rows)),
-        ]
+    import bokeh.models.widgets.tables
+    import panel
+
+    data_full = pandas.DataFrame(rows)
+    data_stats = pandas.DataFrame(rmse_total_rows)
+
+    rmse_format = bokeh.models.widgets.tables.NumberFormatter(format="0.0000")
+
+    formatters_stats = {
+        col: rmse_format for col in data_stats.columns if col.startswith("RMSE")
+    }
+    formatters_full = {
+        **{col: "html" for col in ["Dimer", "Energy [kcal/mol]"]},
+        **{col: rmse_format for col in data_full.columns if col.startswith("RMSE")},
+    }
+
+    layout = panel.Column(
+        "## Statistics",
+        panel.widgets.Tabulator(
+            pandas.DataFrame(rmse_total_rows),
+            show_index=False,
+            selectable=False,
+            disabled=True,
+            formatters=formatters_stats,
+            configuration={"columnDefaults": {"headerSort": False}},
+        ),
+        "## Energies",
+        panel.widgets.Tabulator(
+            data_full,
+            show_index=False,
+            selectable=False,
+            disabled=True,
+            formatters=formatters_full,
+        ),
+        sizing_mode="stretch_width",
+        scroll=True,
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(html)
+    layout.save(output_path, title="Dimers", embed=True)
