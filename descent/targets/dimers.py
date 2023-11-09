@@ -290,28 +290,6 @@ def _plot_energies(energies: dict[str, torch.Tensor]) -> str:
     return img
 
 
-def _pandas_html_style() -> str:
-    """Return the default HTML style for Pandas DataFrames."""
-    import itables
-    import pandas
-
-    html = itables.to_html_datatable(pandas.DataFrame())
-    html_end = html.index("</style>") + len("</style>")
-
-    return html[:html_end]
-
-
-def _pandas_to_html(data_frame: "pandas.DataFrame") -> str:
-    """Convert a Pandas DataFrame to an HTML table."""
-
-    import itables
-
-    html = itables.to_html_datatable(data_frame)
-    html_start = html.index("</style>") + len("</style>")
-
-    return html[html_start:]
-
-
 def report(
     dataset: pyarrow.Table,
     force_fields: dict[str, smee.TensorForceField],
