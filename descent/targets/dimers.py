@@ -393,6 +393,7 @@ def report(
             selectable=False,
             disabled=True,
             formatters=formatters_full,
+            configuration={"rowHeight": 400},
         ),
         sizing_mode="stretch_width",
         scroll=True,
