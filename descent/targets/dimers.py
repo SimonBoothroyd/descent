@@ -2,11 +2,15 @@
 import pathlib
 import typing
 
+import datasets
+import datasets.table
 import pyarrow
 import smee
 import smee.utils
 import torch
+import tqdm
 
+import descent.utils.dataset
 import descent.utils.molecule
 import descent.utils.reporting
 
@@ -42,7 +46,7 @@ class Dimer(typing.TypedDict):
     source: str
 
 
-def create_dataset(dimers: list[Dimer]) -> pyarrow.Table:
+def create_dataset(dimers: list[Dimer]) -> datasets.Dataset:
     """Create a dataset from a list of existing dimers.
 
     Args:
@@ -51,8 +55,8 @@ def create_dataset(dimers: list[Dimer]) -> pyarrow.Table:
     Returns:
         The created dataset.
     """
-    # TODO: validate rows
-    return pyarrow.Table.from_pylist(
+
+    table = pyarrow.Table.from_pylist(
         [
             {
                 "smiles_a": dimer["smiles_a"],
@@ -65,12 +69,17 @@ def create_dataset(dimers: list[Dimer]) -> pyarrow.Table:
         ],
         schema=DATA_SCHEMA,
     )
+    # TODO: validate rows
+    dataset = datasets.Dataset(datasets.table.InMemoryTable(table))
+    dataset.set_format("torch")
+
+    return dataset
 
 
 def create_from_des(
     data_dir: pathlib.Path,
     energy_fn: EnergyFn,
-) -> pyarrow.Table:
+) -> datasets.Dataset:
     """Create a dataset from a DESXXX dimer set.
 
     Args:
@@ -85,14 +94,16 @@ def create_from_des(
         The created dataset.
     """
     import pandas
-    from rdkit import Chem
+    from rdkit import Chem, RDLogger
+
+    RDLogger.DisableLog("rdApp.*")
 
     metadata = pandas.read_csv(data_dir / f"{data_dir.name}.csv", index_col=False)
 
     system_ids = metadata["system_id"].unique()
     dimers: list[Dimer] = []
 
-    for system_id in system_ids:
+    for system_id in tqdm.tqdm(system_ids, desc="loading dimers"):
         system_data = metadata[metadata["system_id"] == system_id]
 
         group_ids = metadata[metadata["system_id"] == system_id]["group_id"].unique()
@@ -130,20 +141,21 @@ def create_from_des(
             coords = torch.tensor(coords_raw)
             energy = energy_fn(group_data, geometry_ids, coords)
 
-            dimers.append(
-                {
-                    "smiles_a": smiles_a,
-                    "smiles_b": smiles_b,
-                    "coords": coords,
-                    "energy": energy,
-                    "source": source,
-                }
-            )
+            dimer = {
+                "smiles_a": smiles_a,
+                "smiles_b": smiles_b,
+                "coords": coords,
+                "energy": energy,
+                "source": source,
+            }
+            dimers.append(dimer)
+
+    RDLogger.EnableLog("rdApp.*")
 
     return create_dataset(dimers)
 
 
-def extract_smiles(dataset: pyarrow.Table) -> list[str]:
+def extract_smiles(dataset: datasets.Dataset) -> list[str]:
     """Return a list of unique SMILES strings in the dataset.
 
     Args:
@@ -153,8 +165,8 @@ def extract_smiles(dataset: pyarrow.Table) -> list[str]:
         The list of unique SMILES strings.
     """
 
-    smiles_a = dataset["smiles_a"].drop_null().unique().to_pylist()
-    smiles_b = dataset["smiles_b"].drop_null().unique().to_pylist()
+    smiles_a = dataset.unique("smiles_a")
+    smiles_b = dataset.unique("smiles_b")
 
     return sorted({*smiles_a, *smiles_b})
 
@@ -238,7 +250,7 @@ def _predict(
 
 
 def predict(
-    dataset: pyarrow.Table,
+    dataset: datasets.Dataset,
     force_field: smee.TensorForceField,
     topologies: dict[str, smee.TensorTopology],
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -255,12 +267,13 @@ def predict(
         ``shape=(n_dimers * n_conf_per_dimer,)``.
     """
 
-    dimers: list[Dimer] = dataset.to_pylist()
-
     reference, predicted = zip(
-        *[_predict(dimer, force_field, topologies) for dimer in dimers]
+        *[
+            _predict(dimer, force_field, topologies)
+            for dimer in descent.utils.dataset.iter_dataset(dataset)
+        ]
     )
-    return torch.stack(reference).flatten(), torch.stack(predicted).flatten()
+    return torch.cat(reference), torch.cat(predicted)
 
 
 def _plot_energies(energies: dict[str, torch.Tensor]) -> str:
@@ -291,7 +304,7 @@ def _plot_energies(energies: dict[str, torch.Tensor]) -> str:
 
 
 def report(
-    dataset: pyarrow.Table,
+    dataset: datasets.Dataset,
     force_fields: dict[str, smee.TensorForceField],
     topologies: dict[str, smee.TensorTopology],
     output_path: pathlib.Path,
@@ -314,8 +327,8 @@ def report(
     }
     delta_sqr_count = 0
 
-    for dimer in dataset.to_pylist():
-        energies = {"ref": torch.tensor(dimer["energy"])}
+    for dimer in descent.utils.dataset.iter_dataset(dataset):
+        energies = {"ref": dimer["energy"]}
         energies.update(
             (force_field_name, _predict(dimer, force_field, topologies)[1])
             for force_field_name, force_field in force_fields.items()
@@ -332,6 +345,8 @@ def report(
 
             rmse = torch.sqrt(delta_sqr / len(energies["ref"]))
             data_row[f"RMSE {force_field_name}"] = rmse.item()
+
+        data_row["Source"] = dimer["source"]
 
         delta_sqr_count += len(energies["ref"])
 
@@ -380,6 +395,7 @@ def report(
             selectable=False,
             disabled=True,
             formatters=formatters_full,
+            configuration={"rowHeight": 400},
         ),
         sizing_mode="stretch_width",
         scroll=True,

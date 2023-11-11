@@ -4,6 +4,7 @@ import pytest
 import smee.mm
 import torch
 
+import descent.utils.dataset
 from descent.targets.thermo import (
     DataEntry,
     SimulationKey,
@@ -88,14 +89,14 @@ def mock_hmix() -> DataEntry:
 
 
 def test_create_dataset(mock_density_pure, mock_density_binary):
-    expected_data_entries = [mock_density_pure, mock_density_binary]
+    expected_entries = [mock_density_pure, mock_density_binary]
 
-    dataset = create_dataset(*expected_data_entries)
+    dataset = create_dataset(*expected_entries)
     assert len(dataset) == 2
 
-    data_entries = dataset.to_pylist()
+    entries = list(descent.utils.dataset.iter_dataset(dataset))
 
-    assert data_entries == pytest.approx(expected_data_entries)
+    assert entries == pytest.approx(expected_entries)
 
 
 def test_extract_smiles(mock_density_pure, mock_density_binary):
