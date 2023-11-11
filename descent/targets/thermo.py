@@ -6,6 +6,8 @@ import pathlib
 import pickle
 import typing
 
+import datasets
+import datasets.table
 import numpy
 import openmm.unit
 import pyarrow
@@ -13,6 +15,8 @@ import pydantic
 import smee.mm
 import torch
 from rdkit import Chem
+
+import descent.utils.dataset
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -119,7 +123,7 @@ class SimulationConfig(pydantic.BaseModel):
 _SystemDict = dict[SimulationKey, smee.TensorSystem]
 
 
-def create_dataset(*rows: DataEntry) -> pyarrow.Table:
+def create_dataset(*rows: DataEntry) -> datasets.Dataset:
     """Create a dataset from a list of existing data points.
 
     Args:
@@ -138,10 +142,13 @@ def create_dataset(*rows: DataEntry) -> pyarrow.Table:
         row["smiles_b"] = Chem.MolToSmiles(Chem.MolFromSmiles(row["smiles_b"]))
 
     # TODO: validate rows
-    return pyarrow.Table.from_pylist([*rows], schema=DATA_SCHEMA)
+    table = pyarrow.Table.from_pylist([*rows], schema=DATA_SCHEMA)
+
+    dataset = datasets.Dataset(datasets.table.InMemoryTable(table))
+    return dataset
 
 
-def extract_smiles(dataset: pyarrow.Table) -> list[str]:
+def extract_smiles(dataset: datasets.Dataset) -> list[str]:
     """Return a list of unique SMILES strings in the dataset.
 
     Args:
@@ -150,8 +157,8 @@ def extract_smiles(dataset: pyarrow.Table) -> list[str]:
     Returns:
         The unique SMILES strings with full atom mapping.
     """
-    smiles_a = dataset["smiles_a"].drop_null().unique().to_pylist()
-    smiles_b = dataset["smiles_b"].drop_null().unique().to_pylist()
+    smiles_a = {smiles for smiles in dataset.unique("smiles_a") if smiles is not None}
+    smiles_b = {smiles for smiles in dataset.unique("smiles_b") if smiles is not None}
 
     smiles_unique = sorted({*smiles_a, *smiles_b})
     return smiles_unique
@@ -510,7 +517,7 @@ def _predict(
 
 
 def predict(
-    dataset: pyarrow.Table,
+    dataset: datasets.Dataset,
     force_field: smee.TensorForceField,
     topologies: dict[str, smee.TensorTopology],
     output_dir: pathlib.Path,
@@ -532,7 +539,7 @@ def predict(
             will be used for any data type not specified.
     """
 
-    entries: list[DataEntry] = dataset.to_pylist()
+    entries: list[DataEntry] = [*descent.utils.dataset.iter_dataset(dataset)]
 
     required_simulations, entry_to_simulation = _plan_simulations(entries, topologies)
     averages = {

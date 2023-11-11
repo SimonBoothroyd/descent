@@ -346,6 +346,8 @@ def report(
             rmse = torch.sqrt(delta_sqr / len(energies["ref"]))
             data_row[f"RMSE {force_field_name}"] = rmse.item()
 
+        data_row["Source"] = dimer["source"]
+
         delta_sqr_count += len(energies["ref"])
 
         rows.append(data_row)
