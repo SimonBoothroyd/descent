@@ -5,6 +5,7 @@ import pytest
 import smee.converters
 import torch
 
+import descent.utils.dataset
 from descent.targets.dimers import (
     Dimer,
     compute_dimer_energy,
@@ -28,12 +29,12 @@ def mock_dimer() -> Dimer:
 
 
 def test_create_dataset(mock_dimer):
-    expected_data_entries = [
+    expected_entries = [
         {
             "smiles_a": mock_dimer["smiles_a"],
             "smiles_b": mock_dimer["smiles_b"],
-            "coords": mock_dimer["coords"].flatten().tolist(),
-            "energy": mock_dimer["energy"].tolist(),
+            "coords": pytest.approx(mock_dimer["coords"].flatten()),
+            "energy": pytest.approx(mock_dimer["energy"]),
             "source": mock_dimer["source"],
         },
     ]
@@ -41,9 +42,8 @@ def test_create_dataset(mock_dimer):
     dataset = create_dataset([mock_dimer])
     assert len(dataset) == 1
 
-    data_entries = dataset.to_pylist()
-
-    assert data_entries == pytest.approx(expected_data_entries)
+    entries = list(descent.utils.dataset.iter_dataset(dataset))
+    assert entries == expected_entries
 
 
 def test_create_from_des(data_dir):
@@ -63,12 +63,13 @@ def test_create_from_des(data_dir):
     expected = {
         "smiles_a": "[C:1]([O:2][H:6])([H:3])([H:4])[H:5]",
         "smiles_b": "[O:1]([H:2])[H:3]",
-        "coords": expected_coords.flatten().tolist(),
-        "energy": [-1.23],
+        "coords": pytest.approx(expected_coords.flatten()),
+        "energy": pytest.approx(torch.tensor([-1.23])),
         "source": "DESMOCK system=4321 orig=MOCK group=1423",
     }
 
-    assert dataset.to_pylist() == [pytest.approx(expected)]
+    entries = list(descent.utils.dataset.iter_dataset(dataset))
+    assert entries == [expected]
 
 
 def test_extract_smiles(mock_dimer):
