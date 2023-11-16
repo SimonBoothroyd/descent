@@ -9,7 +9,7 @@ dependencies:
   - pip
 
   # Core packages
-  - smee >=0.7.0
+  - smee >=0.8.0
 
   - pytorch
   - pydantic
@@ -27,6 +27,11 @@ dependencies:
   # Examples
   - jupyter
   - nbconvert
+
+  # Training
+#  - ray-default
+  - tensorboard
+  - tensorboardX
 
   # Dev / Testing
   - ambertools
