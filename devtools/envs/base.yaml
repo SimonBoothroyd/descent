@@ -36,6 +36,7 @@ dependencies:
   # Dev / Testing
   - ambertools
   - rdkit
+  - uncertainties
 
   - versioneer
 
