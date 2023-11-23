@@ -26,11 +26,11 @@ class Entry(typing.TypedDict):
 
     coords: torch.Tensor
     """The coordinates [Å] the energies and forces were evaluated at with
-    ```shape=(n_confs, n_particles, 3)```."""
+    ``shape=(n_confs, n_particles, 3)``."""
     energy: torch.Tensor
-    """The reference energies [kcal/mol] with ```shape=(n_confs,)```."""
+    """The reference energies [kcal/mol] with ``shape=(n_confs,)``."""
     forces: torch.Tensor
-    """The reference forces [kcal/mol/Å] with ```shape=(n_confs, n_particles, 3)```."""
+    """The reference forces [kcal/mol/Å] with ``shape=(n_confs, n_particles, 3)``."""
 
 
 def create_dataset(entries: list[Entry]) -> datasets.Dataset:
@@ -79,6 +79,7 @@ def predict(
     force_field: smee.TensorForceField,
     topologies: dict[str, smee.TensorTopology],
     reference: typing.Literal["mean", "min"] = "mean",
+    normalize: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Predict the relative energies [kcal/mol] and forces [kcal/mol/Å] of a dataset.
 
@@ -90,11 +91,14 @@ def predict(
         reference: The reference energy to compute the relative energies with respect
             to. This should be either the "mean" energy of all conformers, or the
             energy of the conformer with the lowest reference energy ("min").
+        normalize: Whether to scale the relative energies by ``1/sqrt(n_confs_i)``
+            and the forces by ``1/sqrt(n_confs_i * n_atoms_per_conf_i * 3)`` This
+            is useful when wanting to compute the MSE per entry.
 
     Returns:
         The predicted and reference relative energies [kcal/mol] with
-        ```shape=(n_confs,)```, and predicted and reference forces [kcal/mol/Å] with
-        ```shape=(n_confs * n_atoms_per_conf, 3)```.
+        ``shape=(n_confs,)``, and predicted and reference forces [kcal/mol/Å] with
+        ``shape=(n_confs * n_atoms_per_conf, 3)``.
     """
     energy_ref_all, energy_pred_all = [], []
     forces_ref_all, forces_pred_all = [], []
@@ -111,7 +115,6 @@ def predict(
             .detach()
             .requires_grad_(True)
         )
-
         topology = topologies[smiles]
 
         energy_pred = smee.compute_energy(topology, force_field, coords)
@@ -134,11 +137,17 @@ def predict(
         else:
             raise NotImplementedError(f"invalid reference energy {reference}")
 
-        energy_ref_all.append(energy_ref - energy_ref_0)
-        forces_ref_all.append(forces_ref.reshape(-1, 3))
+        scale_energy, scale_forces = 1.0, 1.0
 
-        energy_pred_all.append(energy_pred - energy_pred_0)
-        forces_pred_all.append(forces_pred.reshape(-1, 3))
+        if normalize:
+            scale_energy = 1.0 / torch.sqrt(torch.tensor(energy_pred.numel()))
+            scale_forces = 1.0 / torch.sqrt(torch.tensor(forces_pred.numel()))
+
+        energy_ref_all.append(scale_energy * (energy_ref - energy_ref_0))
+        forces_ref_all.append(scale_forces * forces_ref.reshape(-1, 3))
+
+        energy_pred_all.append(scale_energy * (energy_pred - energy_pred_0))
+        forces_pred_all.append(scale_forces * forces_pred.reshape(-1, 3))
 
     return (
         torch.cat(energy_ref_all),

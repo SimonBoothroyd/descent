@@ -1,3 +1,5 @@
+import math
+
 import openff.interchange
 import openff.toolkit
 import pytest
@@ -60,13 +62,14 @@ def test_extract_smiles(mock_meoh_entry, mock_hoh_entry):
 
 
 @pytest.mark.parametrize(
-    "reference, "
+    "reference, normalize,"
     "expected_energy_ref, expected_forces_ref, "
     "expected_energy_pred, expected_forces_pred",
     [
         (
             "mean",
-            torch.tensor([-0.5, 0.5]),
+            True,
+            torch.tensor([-0.5, 0.5]) / math.sqrt(2.0),
             torch.tensor(
                 [
                     [0.0, 1.0, 2.0],
@@ -76,8 +79,9 @@ def test_extract_smiles(mock_meoh_entry, mock_hoh_entry):
                     [12.0, 13.0, 14.0],
                     [15.0, 16.0, 17.0],
                 ]
-            ),
-            torch.tensor([7.899425506591797, -7.89942741394043]),
+            )
+            / math.sqrt(6.0 * 3.0),
+            torch.tensor([7.899425506591797, -7.89942741394043]) / math.sqrt(2.0),
             torch.tensor(
                 [
                     [0.0, 83.55978393554688, 0.0],
@@ -87,10 +91,12 @@ def test_extract_smiles(mock_meoh_entry, mock_hoh_entry):
                     [102.62999725341797, 68.72884368896484, 0.0],
                     [-102.62999725341797, 68.72884368896484, 0.0],
                 ]
-            ),
+            )
+            / math.sqrt(6.0 * 3.0),
         ),
         (
             "min",
+            False,
             torch.tensor([0.0, 1.0]),
             torch.tensor(
                 [
@@ -118,6 +124,7 @@ def test_extract_smiles(mock_meoh_entry, mock_hoh_entry):
 )
 def test_predict(
     reference,
+    normalize,
     expected_energy_ref,
     expected_forces_ref,
     expected_energy_pred,
@@ -137,7 +144,7 @@ def test_predict(
     topologies = {mock_hoh_entry["smiles"]: topology}
 
     energy_ref, energy_pred, forces_ref, forces_pred = predict(
-        dataset, force_field, topologies, reference=reference
+        dataset, force_field, topologies, reference=reference, normalize=normalize
     )
 
     assert energy_pred.shape == expected_energy_pred.shape
