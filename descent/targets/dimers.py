@@ -71,7 +71,7 @@ def create_dataset(dimers: list[Dimer]) -> datasets.Dataset:
     )
     # TODO: validate rows
     dataset = datasets.Dataset(datasets.table.InMemoryTable(table))
-    dataset.set_format("torch")
+    dataset.set_format("torch", columns=['coords', 'energy'], dytpe=torch.float64)
 
     return dataset
 
