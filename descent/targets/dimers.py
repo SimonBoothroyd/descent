@@ -138,7 +138,7 @@ def create_from_des(
                 for geometry_id in geometry_ids
             ]
 
-            coords = torch.tensor(coords_raw)
+            coords = torch.tensor(coords_raw, dtype=torch.float64)
             energy = energy_fn(group_data, geometry_ids, coords)
 
             dimer = {
