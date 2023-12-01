@@ -1,8 +1,20 @@
-DESCENT
-=======
-[![Test Status](https://github.com/simonboothroyd/descent/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/simonboothroyd/descent/actions/workflows/ci.yaml)
-[![codecov](https://codecov.io/gh/simonboothroyd/descent/branch/main/graph/badge.svg)](https://codecov.io/gh/simonboothroyd/descent/branch/main)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<h1 align="center">DESCENT</h1>
+
+<p align="center">Optimize force field parameters against reference data</p>
+
+<p align="center">
+  <a href="https://github.com//actions?query=workflow%3Aci">
+    <img alt="ci" src="https://github.com/SimonBoothroyd/descent/actions/workflows/ci.yaml/badge.svg" />
+  </a>
+  <a href="https://codecov.io/gh/SimonBoothroyd/descent/branch/main">
+    <img alt="coverage" src="https://codecov.io/gh/SimonBoothroyd/descent/branch/main/graph/badge.svg" />
+  </a>
+  <a href="https://opensource.org/licenses/MIT">
+    <img alt="license" src="https://img.shields.io/badge/License-MIT-yellow.svg" />
+  </a>
+</p>
+
+---
 
 The `descent` framework aims to offer a modern API for training classical force field parameters (either from a 
 traditional format such as SMIRNOFF or from some ML model) against reference data using `pytorch`.
@@ -31,39 +43,6 @@ mamba install -c conda-forge jupyter
 ## Getting Started
 
 To get started, see the [examples](examples).
-
-## Development
-
-A development conda environment can be created and activated by running:
-
-```shell
-make env
-conda activate descent
-```
-
-The environment will include all example and development dependencies, including linters and testing apparatus.
-
-Unit / example tests can be run using:
-
-```shell
-make test
-```
-
-The codebase can be formatted by running:
-
-```shell
-make format
-```
-
-or checked for lint with:
-
-```shell
-make lint
-```
-
-## License
-
-The main package is release under the [MIT license](LICENSE). 
 
 ## Copyright
 
