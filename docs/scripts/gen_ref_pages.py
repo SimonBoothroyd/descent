@@ -5,7 +5,7 @@ import pathlib
 import mkdocs_gen_files
 
 nav = mkdocs_gen_files.Nav()
-src = pathlib.Path(__file__).parent.parent.parent / "smee"
+src = pathlib.Path(__file__).parent.parent.parent / "descent"
 
 mod_symbol = '<code class="doc-symbol doc-symbol-nav doc-symbol-module"></code>'
 
