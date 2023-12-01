@@ -30,3 +30,16 @@ format:
 
 test:
 	$(CONDA_ENV_RUN) pytest -v --cov=$(PACKAGE_NAME) --cov-report=xml --color=yes $(PACKAGE_NAME)/tests/
+
+docs-build:
+	$(CONDA_ENV_RUN) mkdocs build
+
+docs-deploy:
+ifndef VERSION
+	$(error VERSION is not set)
+endif
+	$(CONDA_ENV_RUN) mike deploy --push --update-aliases $(VERSION)
+
+docs-insiders:
+	$(CONDA_ENV_RUN) pip install git+https://$(INSIDER_DOCS_TOKEN)@github.com/SimonBoothroyd/mkdocstrings-python.git \
+                    			 git+https://$(INSIDER_DOCS_TOKEN)@github.com/SimonBoothroyd/griffe-pydantic.git@fix-inheritence-static
