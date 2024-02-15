@@ -11,6 +11,7 @@ from descent.targets.thermo import (
     SimulationKey,
     _compute_observables,
     _convert_entry_to_system,
+    _map_smiles,
     _Observables,
     _plan_simulations,
     _predict,
@@ -90,6 +91,21 @@ def mock_hmix() -> DataEntry:
     }
 
 
+@pytest.mark.parametrize(
+    "smiles, expected",
+    [
+        ("C", "[C:1]([H:2])([H:3])([H:4])[H:5]"),
+        ("[CH4:1]", "[C:1]([H:2])([H:3])([H:4])[H:5]"),
+        ("[Cl:1][H:2]", "[Cl:1][H:2]"),
+        ("[Cl:2][H:1]", "[Cl:2][H:1]"),
+        ("[Cl:2][H:2]", "[Cl:1][H:2]"),
+        ("[Cl:1][H]", "[Cl:1][H:2]"),
+    ],
+)
+def test_map_smiles(smiles, expected):
+    assert _map_smiles(smiles) == expected
+
+
 def test_create_dataset(mock_density_pure, mock_density_binary):
     expected_entries = [mock_density_pure, mock_density_binary]
 
@@ -105,7 +121,10 @@ def test_extract_smiles(mock_density_pure, mock_density_binary):
     dataset = create_dataset(mock_density_pure, mock_density_binary)
     smiles = extract_smiles(dataset)
 
-    expected_smiles = ["CCO", "CO"]
+    expected_smiles = [
+        "[C:1]([C:2]([O:3][H:9])([H:7])[H:8])([H:4])([H:5])[H:6]",
+        "[C:1]([O:2][H:6])([H:3])([H:4])[H:5]",
+    ]
     assert smiles == expected_smiles
 
 

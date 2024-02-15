@@ -1,4 +1,5 @@
 """Train against thermodynamic properties."""
+
 import contextlib
 import hashlib
 import logging
@@ -113,9 +114,9 @@ class SimulationConfig(pydantic.BaseModel):
         False, description="Whether to apply hydrogen mass repartitioning."
     )
 
-    equilibrate: list[
-        smee.mm.MinimizationConfig | smee.mm.SimulationConfig
-    ] = pydantic.Field(..., description="Configuration for equilibration simulations.")
+    equilibrate: list[smee.mm.MinimizationConfig | smee.mm.SimulationConfig] = (
+        pydantic.Field(..., description="Configuration for equilibration simulations.")
+    )
 
     production: smee.mm.SimulationConfig = pydantic.Field(
         ..., description="Configuration for the production simulation."
@@ -137,6 +138,24 @@ class _Observables(typing.NamedTuple):
 _SystemDict = dict[SimulationKey, smee.TensorSystem]
 
 
+def _map_smiles(smiles: str) -> str:
+    """Add atom mapping to a SMILES string if it is not already present."""
+    params = Chem.SmilesParserParams()
+    params.removeHs = False
+
+    mol = Chem.AddHs(Chem.MolFromSmiles(smiles, params))
+
+    map_idxs = sorted(atom.GetAtomMapNum() for atom in mol.GetAtoms())
+
+    if map_idxs == list(range(1, len(map_idxs) + 1)):
+        return smiles
+
+    for i, atom in enumerate(mol.GetAtoms()):
+        atom.SetAtomMapNum(i + 1)
+
+    return Chem.MolToSmiles(mol)
+
+
 def create_dataset(*rows: DataEntry) -> datasets.Dataset:
     """Create a dataset from a list of existing data points.
 
@@ -148,12 +167,12 @@ def create_dataset(*rows: DataEntry) -> datasets.Dataset:
     """
 
     for row in rows:
-        row["smiles_a"] = Chem.MolToSmiles(Chem.MolFromSmiles(row["smiles_a"]))
+        row["smiles_a"] = _map_smiles(row["smiles_a"])
 
         if row["smiles_b"] is None:
             continue
 
-        row["smiles_b"] = Chem.MolToSmiles(Chem.MolFromSmiles(row["smiles_b"]))
+        row["smiles_b"] = _map_smiles(row["smiles_b"])
 
     # TODO: validate rows
     table = pyarrow.Table.from_pylist([*rows], schema=DATA_SCHEMA)
@@ -519,9 +538,7 @@ def _predict_hmix(
 
     value = enthalpy_mix - x_0 * enthalpy_0 - x_1 * enthalpy_1
     std = torch.sqrt(
-        enthalpy_mix_std**2
-        + x_0**2 * enthalpy_0_std**2
-        + x_1**2 * enthalpy_1_std**2
+        enthalpy_mix_std**2 + x_0**2 * enthalpy_0_std**2 + x_1**2 * enthalpy_1_std**2
     )
 
     return value, std
