@@ -516,7 +516,7 @@ def test_predict_hmix(mock_hmix, mocker):
 def test_predict(tmp_cwd, mock_density_pure, mocker):
     dataset = create_dataset(mock_density_pure)
 
-    mock_topologies = {"CO": mocker.Mock()}
+    mock_topologies = {"[C:1]([O:2][H:6])([H:3])([H:4])[H:5]": mocker.Mock()}
     mock_ff = mocker.Mock()
 
     mock_density = torch.tensor(123.0)
@@ -539,7 +539,7 @@ def test_predict(tmp_cwd, mock_density_pure, mocker):
     mock_compute.assert_called_once_with(
         "bulk",
         SimulationKey(
-            ("CO",),
+            ("[C:1]([O:2][H:6])([H:3])([H:4])[H:5]",),
             (256,),
             mock_density_pure["temperature"],
             mock_density_pure["pressure"],
