@@ -1,4 +1,5 @@
 """Utilities for defining loss functions."""
+
 import functools
 import typing
 

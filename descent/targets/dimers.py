@@ -1,4 +1,5 @@
 """Train against dimer energies."""
+
 import pathlib
 import typing
 

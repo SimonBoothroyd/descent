@@ -1,4 +1,5 @@
 """Utilities for reporting results."""
+
 import base64
 import io
 import itertools

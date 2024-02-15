@@ -8,6 +8,7 @@ Notes:
 References:
     [1]: https://github.com/leeping/forcebalance/blob/b395fd4b/src/optimizer.py
 """
+
 import logging
 import math
 import typing
