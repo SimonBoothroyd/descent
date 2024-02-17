@@ -653,7 +653,11 @@ def predict(
                 {
                     "type": f'{entry["type"]} {entry["units"]}',
                     "smiles_a": _unmap_smiles(entry["smiles_a"]),
-                    "smiles_b": _unmap_smiles(entry["smiles_b"]),
+                    "smiles_b": (
+                        ""
+                        if entry["smiles_b"] is None
+                        else _unmap_smiles(entry["smiles_b"])
+                    ),
                     "pred": f"{float(value):.3f} ± {float(std):.3f}",
                     "ref": f"{float(entry['value']):.3f} ± {float(entry['std']):.3f}",
                 }
