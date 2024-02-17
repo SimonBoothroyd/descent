@@ -16,12 +16,12 @@ import pydantic
 import smee.mm
 import smee.utils
 import torch
-from rdkit import Chem
 
 import descent.optim
 import descent.train
 import descent.utils.dataset
 import descent.utils.loss
+import descent.utils.molecule
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -141,34 +141,6 @@ class _Observables(typing.NamedTuple):
 _SystemDict = dict[SimulationKey, smee.TensorSystem]
 
 
-def _map_smiles(smiles: str) -> str:
-    """Add atom mapping to a SMILES string if it is not already present."""
-    params = Chem.SmilesParserParams()
-    params.removeHs = False
-
-    mol = Chem.AddHs(Chem.MolFromSmiles(smiles, params))
-
-    map_idxs = sorted(atom.GetAtomMapNum() for atom in mol.GetAtoms())
-
-    if map_idxs == list(range(1, len(map_idxs) + 1)):
-        return smiles
-
-    for i, atom in enumerate(mol.GetAtoms()):
-        atom.SetAtomMapNum(i + 1)
-
-    return Chem.MolToSmiles(mol)
-
-
-def _unmap_smiles(smiles: str) -> str:
-    """Remove atom mapping from a SMILES string."""
-    mol = Chem.MolFromSmiles(smiles)
-
-    for atom in mol.GetAtoms():
-        atom.SetAtomMapNum(0)
-
-    return Chem.MolToSmiles(mol)
-
-
 def create_dataset(*rows: DataEntry) -> datasets.Dataset:
     """Create a dataset from a list of existing data points.
 
@@ -180,12 +152,12 @@ def create_dataset(*rows: DataEntry) -> datasets.Dataset:
     """
 
     for row in rows:
-        row["smiles_a"] = _map_smiles(row["smiles_a"])
+        row["smiles_a"] = descent.utils.molecule.map_smiles(row["smiles_a"])
 
         if row["smiles_b"] is None:
             continue
 
-        row["smiles_b"] = _map_smiles(row["smiles_b"])
+        row["smiles_b"] = descent.utils.molecule.map_smiles(row["smiles_b"])
 
     # TODO: validate rows
     table = pyarrow.Table.from_pylist([*rows], schema=DATA_SCHEMA)
@@ -654,11 +626,11 @@ def predict(
             verbose_rows.append(
                 {
                     "type": f'{entry["type"]} [{entry["units"]}]',
-                    "smiles_a": _unmap_smiles(entry["smiles_a"]),
+                    "smiles_a": descent.utils.molecule.unmap_smiles(entry["smiles_a"]),
                     "smiles_b": (
                         ""
                         if entry["smiles_b"] is None
-                        else _unmap_smiles(entry["smiles_b"])
+                        else descent.utils.molecule.unmap_smiles(entry["smiles_b"])
                     ),
                     "pred": f"{float(value):.3f} ± {float(std):.3f}",
                     "ref": f"{float(entry['value']):.3f}{std_ref}",
