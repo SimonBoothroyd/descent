@@ -72,7 +72,7 @@ def create_dataset(dimers: list[Dimer]) -> datasets.Dataset:
     )
     # TODO: validate rows
     dataset = datasets.Dataset(datasets.table.InMemoryTable(table))
-    dataset.set_format("torch")
+    dataset.set_format("torch", columns=['coords', 'energy'], dytpe=torch.float64)
 
     return dataset
 
@@ -139,7 +139,7 @@ def create_from_des(
                 for geometry_id in geometry_ids
             ]
 
-            coords = torch.tensor(coords_raw)
+            coords = torch.tensor(coords_raw, dtype=torch.float64)
             energy = energy_fn(group_data, geometry_ids, coords)
 
             dimer = {
