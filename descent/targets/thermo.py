@@ -678,7 +678,7 @@ def default_closure(
     trainable: descent.train.Trainable,
     topologies: dict[str, smee.TensorTopology],
     dataset: datasets.Dataset,
-    scales: dict[descent.targets.thermo.DataType, float],
+    scales: dict[DataType, float],
     verbose: bool = False,
 ) -> descent.optim.ClosureFn:
     """Return a default closure function for training against thermodynamic
