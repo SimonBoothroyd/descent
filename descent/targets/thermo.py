@@ -18,7 +18,10 @@ import smee.utils
 import torch
 from rdkit import Chem
 
+import descent.optim
+import descent.train
 import descent.utils.dataset
+import descent.utils.loss
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -152,6 +155,16 @@ def _map_smiles(smiles: str) -> str:
 
     for i, atom in enumerate(mol.GetAtoms()):
         atom.SetAtomMapNum(i + 1)
+
+    return Chem.MolToSmiles(mol)
+
+
+def _unmap_smiles(smiles: str) -> str:
+    """Remove atom mapping from a SMILES string."""
+    mol = Chem.MolFromSmiles(smiles)
+
+    for atom in mol.GetAtoms():
+        atom.SetAtomMapNum(0)
 
     return Chem.MolToSmiles(mol)
 
@@ -582,6 +595,7 @@ def predict(
     output_dir: pathlib.Path,
     cached_dir: pathlib.Path | None = None,
     per_type_scales: dict[DataType, float] | None = None,
+    verbose: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Predict the properties in a dataset using molecular simulation, or by reweighting
     previous simulation data.
@@ -596,6 +610,7 @@ def predict(
             from.
         per_type_scales: The scale factor to apply to each data type. A default of 1.0
             will be used for any data type not specified.
+        verbose: Whether to log additional information.
     """
 
     entries: list[DataEntry] = [*descent.utils.dataset.iter_dataset(dataset)]
@@ -616,6 +631,8 @@ def predict(
     reference = []
     reference_std = []
 
+    verbose_rows = []
+
     per_type_scales = per_type_scales if per_type_scales is not None else {}
 
     for entry, keys in zip(entries, entry_to_simulation):
@@ -631,6 +648,23 @@ def predict(
             torch.nan if entry["std"] is None else entry["std"] * abs(type_scale)
         )
 
+        if verbose:
+            verbose_rows.append(
+                {
+                    "type": f'{entry["type"]} {entry["units"]}',
+                    "smiles_a": _unmap_smiles(entry["smiles_a"]),
+                    "smiles_b": _unmap_smiles(entry["smiles_b"]),
+                    "pred": f"{value:.3f} ± {std:.3f}",
+                    "ref": f"{entry['value']:.3f} ± {entry['std']:.3f}",
+                }
+            )
+
+    if verbose:
+        import pandas
+
+        _LOGGER.info(f"predicted {len(entries)} properties")
+        _LOGGER.info(pandas.DataFrame(verbose_rows).to_string())
+
     predicted = torch.stack(predicted)
     predicted_std = torch.stack(predicted_std)
 
@@ -638,3 +672,47 @@ def predict(
     reference_std = smee.utils.tensor_like(reference_std, predicted_std)
 
     return reference, reference_std, predicted, predicted_std
+
+
+def default_closure(
+    trainable: descent.train.Trainable,
+    topologies: dict[str, smee.TensorTopology],
+    dataset: datasets.Dataset,
+    scales: dict[descent.targets.thermo.DataType, float],
+    verbose: bool = False,
+) -> descent.optim.ClosureFn:
+    """Return a default closure function for training against thermodynamic
+    properties.
+
+    Args:
+        trainable: The wrapper around trainable parameters.
+        topologies: The topologies of the molecules present in the dataset, with keys
+            of mapped SMILES patterns.
+        dataset: The dataset to train against.
+        scales: The scale factor to apply to each data type.
+        verbose: Whether to log additional information about predictions.
+
+    Returns:
+        The default closure function.
+    """
+
+    def closure_fn(
+        x: torch.Tensor,
+        compute_gradient: bool,
+        compute_hessian: bool,
+    ):
+        force_field = trainable.to_force_field(x)
+
+        y_ref, y_ref_std, y_pred, y_pred_std = descent.targets.thermo.predict(
+            dataset, force_field, topologies, pathlib.Path.cwd(), None, scales, verbose
+        )
+        loss, gradient, hessian = ((y_pred - y_ref) ** 2).sum(), None, None
+
+        if compute_hessian:
+            hessian = descent.utils.loss.approximate_hessian(x, y_pred)
+        if compute_gradient:
+            gradient = torch.autograd.grad(loss, x, retain_graph=True)[0].detach()
+
+        return loss.detach(), gradient, hessian
+
+    return closure_fn
