@@ -654,8 +654,8 @@ def predict(
                     "type": f'{entry["type"]} {entry["units"]}',
                     "smiles_a": _unmap_smiles(entry["smiles_a"]),
                     "smiles_b": _unmap_smiles(entry["smiles_b"]),
-                    "pred": f"{value:.3f} ± {std:.3f}",
-                    "ref": f"{entry['value']:.3f} ± {entry['std']:.3f}",
+                    "pred": f"{float(value):.3f} ± {float(std):.3f}",
+                    "ref": f"{float(entry['value']):.3f} ± {float(entry['std']):.3f}",
                 }
             )
 
