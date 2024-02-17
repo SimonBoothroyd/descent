@@ -653,7 +653,7 @@ def predict(
 
             verbose_rows.append(
                 {
-                    "type": f'{entry["type"]} {entry["units"]}',
+                    "type": f'{entry["type"]} [{entry["units"]}]',
                     "smiles_a": _unmap_smiles(entry["smiles_a"]),
                     "smiles_b": (
                         ""
@@ -669,7 +669,7 @@ def predict(
         import pandas
 
         _LOGGER.info(f"predicted {len(entries)} properties")
-        _LOGGER.info(pandas.DataFrame(verbose_rows).to_string())
+        _LOGGER.info("\n" + pandas.DataFrame(verbose_rows).to_string(index=False))
 
     predicted = torch.stack(predicted)
     predicted_std = torch.stack(predicted_std)
