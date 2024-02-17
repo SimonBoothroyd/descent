@@ -649,6 +649,8 @@ def predict(
         )
 
         if verbose:
+            std_ref = "" if entry["std"] is None else " ± {float(entry['std']):.3f}"
+
             verbose_rows.append(
                 {
                     "type": f'{entry["type"]} {entry["units"]}',
@@ -659,7 +661,7 @@ def predict(
                         else _unmap_smiles(entry["smiles_b"])
                     ),
                     "pred": f"{float(value):.3f} ± {float(std):.3f}",
-                    "ref": f"{float(entry['value']):.3f} ± {float(entry['std']):.3f}",
+                    "ref": f"{float(entry['value']):.3f}{std_ref}",
                 }
             )
 
