@@ -230,7 +230,7 @@ def test_report(tmp_cwd, mock_dimer, mocker):
     mock_tops = mocker.MagicMock()
 
     expected_path = tmp_cwd / "report.html"
-    report(dataset, {"A": mock_ff}, mock_tops, expected_path)
+    report(dataset, {"A": mock_ff}, {"A": mock_tops}, expected_path)
 
     assert expected_path.exists()
     assert expected_path.read_text().startswith("<!DOCTYPE html>")

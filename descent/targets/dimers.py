@@ -337,7 +337,7 @@ def _plot_energies(energies: dict[str, torch.Tensor]) -> str:
 def report(
     dataset: datasets.Dataset,
     force_fields: dict[str, smee.TensorForceField],
-    topologies: dict[str, smee.TensorTopology],
+    topologies: dict[str, dict[str, smee.TensorTopology]],
     output_path: pathlib.Path,
 ):
     """Generate a report comparing the predicted and reference energies of each dimer.
@@ -345,8 +345,8 @@ def report(
     Args:
         dataset: The dataset to generate the report for.
         force_fields: The force fields to use to predict the energies.
-        topologies: The topologies of each monomer. Each key should be a fully
-            mapped SMILES string.
+        topologies: The topologies of each monomer for the given force field. Each key should be a fully
+            mapped SMILES string. The name of the force field must also be present in force_fields
         output_path: The path to write the report to.
     """
     import pandas
@@ -361,7 +361,7 @@ def report(
     for dimer in descent.utils.dataset.iter_dataset(dataset):
         energies = {"ref": dimer["energy"]}
         energies.update(
-            (force_field_name, _predict(dimer, force_field, topologies)[1])
+            (force_field_name, _predict(dimer, force_field, topologies[force_field_name])[1])
             for force_field_name, force_field in force_fields.items()
         )
 
