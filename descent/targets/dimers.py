@@ -11,7 +11,6 @@ import smee.utils
 import torch
 import tqdm
 
-import descent.train
 import descent.utils.dataset
 import descent.utils.loss
 import descent.utils.molecule
@@ -19,6 +18,8 @@ import descent.utils.reporting
 
 if typing.TYPE_CHECKING:
     import pandas
+
+    import descent.train
 
 
 EnergyFn = typing.Callable[
@@ -280,7 +281,7 @@ def predict(
 
 
 def default_closure(
-    trainable: descent.train.Trainable,
+    trainable: "descent.train.Trainable",
     topologies: dict[str, smee.TensorTopology],
     dataset: datasets.Dataset,
 ):

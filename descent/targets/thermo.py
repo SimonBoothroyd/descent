@@ -18,10 +18,13 @@ import smee.utils
 import torch
 
 import descent.optim
-import descent.train
 import descent.utils.dataset
 import descent.utils.loss
 import descent.utils.molecule
+
+if typing.TYPE_CHECKING:
+    import descent.train
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -653,7 +656,7 @@ def predict(
 
 
 def default_closure(
-    trainable: descent.train.Trainable,
+    trainable: "descent.train.Trainable",
     topologies: dict[str, smee.TensorTopology],
     dataset: datasets.Dataset,
     per_type_scales: dict[DataType, float] | None = None,
