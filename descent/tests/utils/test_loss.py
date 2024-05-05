@@ -39,7 +39,6 @@ def test_to_closure():
 
 
 def test_combine_closures():
-
     def mock_closure_a(x_, compute_gradient, compute_hessian):
         loss = x_[0] ** 2
         grad = 2 * x_[0] if compute_gradient else None
