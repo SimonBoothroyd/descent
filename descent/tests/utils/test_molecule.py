@@ -26,13 +26,17 @@ def test_unmap_smiles():
 
 
 @pytest.mark.parametrize(
-    "input_smiles, expected_smiles",
+    "smiles, expected",
     [
+        ("C", "[C:1]([H:2])([H:3])([H:4])[H:5]"),
+        ("[CH4:1]", "[C:1]([H:2])([H:3])([H:4])[H:5]"),
+        ("[Cl:1][H:2]", "[Cl:1][H:2]"),
+        ("[Cl:2][H:1]", "[Cl:2][H:1]"),
+        ("[Cl:2][H:2]", "[Cl:1][H:2]"),
+        ("[Cl:1][H]", "[Cl:1][H:2]"),
         ("[H:1][C:4]([H:2])([O:3][H:5])[H:6]", "[H:1][C:4]([H:2])([O:3][H:5])[H:6]"),
         ("CO", "[C:1]([O:2][H:6])([H:3])([H:4])[H:5]"),
     ],
 )
-def test_map_smiles(input_smiles, expected_smiles):
-    mapped_smiles = map_smiles(input_smiles)
-
-    assert mapped_smiles == expected_smiles
+def test_map_smiles(smiles, expected):
+    assert map_smiles(smiles) == expected

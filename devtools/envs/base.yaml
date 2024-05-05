@@ -9,7 +9,7 @@ dependencies:
   - pip
 
   # Core packages
-  - smee >=0.8.0
+  - smee >=0.10.0
 
   - pytorch
   - pydantic

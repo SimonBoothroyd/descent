@@ -11,7 +11,6 @@ from descent.targets.thermo import (
     SimulationKey,
     _compute_observables,
     _convert_entry_to_system,
-    _map_smiles,
     _Observables,
     _plan_simulations,
     _predict,
@@ -89,21 +88,6 @@ def mock_hmix() -> DataEntry:
         "units": "kcal/mol",
         "source": None,
     }
-
-
-@pytest.mark.parametrize(
-    "smiles, expected",
-    [
-        ("C", "[C:1]([H:2])([H:3])([H:4])[H:5]"),
-        ("[CH4:1]", "[C:1]([H:2])([H:3])([H:4])[H:5]"),
-        ("[Cl:1][H:2]", "[Cl:1][H:2]"),
-        ("[Cl:2][H:1]", "[Cl:2][H:1]"),
-        ("[Cl:2][H:2]", "[Cl:1][H:2]"),
-        ("[Cl:1][H]", "[Cl:1][H:2]"),
-    ],
-)
-def test_map_smiles(smiles, expected):
-    assert _map_smiles(smiles) == expected
 
 
 def test_create_dataset(mock_density_pure, mock_density_binary):
@@ -533,7 +517,13 @@ def test_predict(tmp_cwd, mock_density_pure, mocker):
     mock_scale = 3.0
 
     y_ref, y_ref_std, y_pred, y_pred_std = predict(
-        dataset, mock_ff, mock_topologies, tmp_cwd, None, {"density": mock_scale}
+        dataset,
+        mock_ff,
+        mock_topologies,
+        tmp_cwd,
+        None,
+        {"density": mock_scale},
+        verbose=True,
     )
 
     mock_compute.assert_called_once_with(

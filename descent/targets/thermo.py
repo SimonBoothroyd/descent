@@ -621,7 +621,7 @@ def predict(
         )
 
         if verbose:
-            std_ref = "" if entry["std"] is None else " ± {float(entry['std']):.3f}"
+            std_ref = "" if entry["std"] is None else f" ± {float(entry['std']):.3f}"
 
             verbose_rows.append(
                 {
