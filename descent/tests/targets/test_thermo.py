@@ -16,6 +16,7 @@ from descent.targets.thermo import (
     _predict,
     _simulate,
     create_dataset,
+    default_closure,
     default_config,
     extract_smiles,
     predict,
@@ -555,3 +556,30 @@ def test_predict(tmp_cwd, mock_density_pure, mocker):
     assert torch.allclose(y_pred, expected_y_pred)
     assert y_pred_std.shape == expected_y_pred_std.shape
     assert torch.allclose(y_pred_std, expected_y_pred_std)
+
+
+def test_default_closure(tmp_cwd, mock_density_pure, mocker):
+    dataset = create_dataset(mock_density_pure)
+
+    mock_x = torch.tensor([2.0], requires_grad=True)
+
+    mock_y_pred = torch.tensor([3.0, 4.0]) * mock_x
+    mock_y_ref = torch.Tensor([-1.23, 4.56])
+
+    mocker.patch(
+        "descent.targets.thermo.predict",
+        autospec=True,
+        return_value=(mock_y_ref, None, mock_y_pred, None),
+    )
+    mock_topologies = {mock_density_pure["smiles_a"]: mocker.MagicMock()}
+    mock_trainable = mocker.MagicMock()
+
+    closure_fn = default_closure(mock_trainable, mock_topologies, dataset, None)
+
+    expected_loss = (mock_y_pred - mock_y_ref).pow(2).sum()
+
+    loss, grad, hess = closure_fn(mock_x, compute_gradient=True, compute_hessian=True)
+
+    assert torch.isclose(loss, expected_loss)
+    assert grad.shape == mock_x.shape
+    assert hess.shape == (1, 1)

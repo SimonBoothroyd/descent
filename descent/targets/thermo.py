@@ -656,7 +656,7 @@ def default_closure(
     trainable: descent.train.Trainable,
     topologies: dict[str, smee.TensorTopology],
     dataset: datasets.Dataset,
-    scales: dict[DataType, float],
+    per_type_scales: dict[DataType, float] | None = None,
     verbose: bool = False,
 ) -> descent.optim.ClosureFn:
     """Return a default closure function for training against thermodynamic
@@ -667,7 +667,7 @@ def default_closure(
         topologies: The topologies of the molecules present in the dataset, with keys
             of mapped SMILES patterns.
         dataset: The dataset to train against.
-        scales: The scale factor to apply to each data type.
+        per_type_scales: The scale factor to apply to each data type.
         verbose: Whether to log additional information about predictions.
 
     Returns:
@@ -681,8 +681,14 @@ def default_closure(
     ):
         force_field = trainable.to_force_field(x)
 
-        y_ref, y_ref_std, y_pred, y_pred_std = descent.targets.thermo.predict(
-            dataset, force_field, topologies, pathlib.Path.cwd(), None, scales, verbose
+        y_ref, _, y_pred, _ = descent.targets.thermo.predict(
+            dataset,
+            force_field,
+            topologies,
+            pathlib.Path.cwd(),
+            None,
+            per_type_scales,
+            verbose,
         )
         loss, gradient, hessian = ((y_pred - y_ref) ** 2).sum(), None, None
 
