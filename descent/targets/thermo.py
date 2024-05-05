@@ -16,9 +16,15 @@ import pydantic
 import smee.mm
 import smee.utils
 import torch
-from rdkit import Chem
 
+import descent.optim
 import descent.utils.dataset
+import descent.utils.loss
+import descent.utils.molecule
+
+if typing.TYPE_CHECKING:
+    import descent.train
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -138,24 +144,6 @@ class _Observables(typing.NamedTuple):
 _SystemDict = dict[SimulationKey, smee.TensorSystem]
 
 
-def _map_smiles(smiles: str) -> str:
-    """Add atom mapping to a SMILES string if it is not already present."""
-    params = Chem.SmilesParserParams()
-    params.removeHs = False
-
-    mol = Chem.AddHs(Chem.MolFromSmiles(smiles, params))
-
-    map_idxs = sorted(atom.GetAtomMapNum() for atom in mol.GetAtoms())
-
-    if map_idxs == list(range(1, len(map_idxs) + 1)):
-        return smiles
-
-    for i, atom in enumerate(mol.GetAtoms()):
-        atom.SetAtomMapNum(i + 1)
-
-    return Chem.MolToSmiles(mol)
-
-
 def create_dataset(*rows: DataEntry) -> datasets.Dataset:
     """Create a dataset from a list of existing data points.
 
@@ -167,12 +155,12 @@ def create_dataset(*rows: DataEntry) -> datasets.Dataset:
     """
 
     for row in rows:
-        row["smiles_a"] = _map_smiles(row["smiles_a"])
+        row["smiles_a"] = descent.utils.molecule.map_smiles(row["smiles_a"])
 
         if row["smiles_b"] is None:
             continue
 
-        row["smiles_b"] = _map_smiles(row["smiles_b"])
+        row["smiles_b"] = descent.utils.molecule.map_smiles(row["smiles_b"])
 
     # TODO: validate rows
     table = pyarrow.Table.from_pylist([*rows], schema=DATA_SCHEMA)
@@ -582,6 +570,7 @@ def predict(
     output_dir: pathlib.Path,
     cached_dir: pathlib.Path | None = None,
     per_type_scales: dict[DataType, float] | None = None,
+    verbose: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Predict the properties in a dataset using molecular simulation, or by reweighting
     previous simulation data.
@@ -596,6 +585,7 @@ def predict(
             from.
         per_type_scales: The scale factor to apply to each data type. A default of 1.0
             will be used for any data type not specified.
+        verbose: Whether to log additional information.
     """
 
     entries: list[DataEntry] = [*descent.utils.dataset.iter_dataset(dataset)]
@@ -616,6 +606,8 @@ def predict(
     reference = []
     reference_std = []
 
+    verbose_rows = []
+
     per_type_scales = per_type_scales if per_type_scales is not None else {}
 
     for entry, keys in zip(entries, entry_to_simulation):
@@ -631,6 +623,29 @@ def predict(
             torch.nan if entry["std"] is None else entry["std"] * abs(type_scale)
         )
 
+        if verbose:
+            std_ref = "" if entry["std"] is None else f" ± {float(entry['std']):.3f}"
+
+            verbose_rows.append(
+                {
+                    "type": f'{entry["type"]} [{entry["units"]}]',
+                    "smiles_a": descent.utils.molecule.unmap_smiles(entry["smiles_a"]),
+                    "smiles_b": (
+                        ""
+                        if entry["smiles_b"] is None
+                        else descent.utils.molecule.unmap_smiles(entry["smiles_b"])
+                    ),
+                    "pred": f"{float(value):.3f} ± {float(std):.3f}",
+                    "ref": f"{float(entry['value']):.3f}{std_ref}",
+                }
+            )
+
+    if verbose:
+        import pandas
+
+        _LOGGER.info(f"predicted {len(entries)} properties")
+        _LOGGER.info("\n" + pandas.DataFrame(verbose_rows).to_string(index=False))
+
     predicted = torch.stack(predicted)
     predicted_std = torch.stack(predicted_std)
 
@@ -638,3 +653,53 @@ def predict(
     reference_std = smee.utils.tensor_like(reference_std, predicted_std)
 
     return reference, reference_std, predicted, predicted_std
+
+
+def default_closure(
+    trainable: "descent.train.Trainable",
+    topologies: dict[str, smee.TensorTopology],
+    dataset: datasets.Dataset,
+    per_type_scales: dict[DataType, float] | None = None,
+    verbose: bool = False,
+) -> descent.optim.ClosureFn:
+    """Return a default closure function for training against thermodynamic
+    properties.
+
+    Args:
+        trainable: The wrapper around trainable parameters.
+        topologies: The topologies of the molecules present in the dataset, with keys
+            of mapped SMILES patterns.
+        dataset: The dataset to train against.
+        per_type_scales: The scale factor to apply to each data type.
+        verbose: Whether to log additional information about predictions.
+
+    Returns:
+        The default closure function.
+    """
+
+    def closure_fn(
+        x: torch.Tensor,
+        compute_gradient: bool,
+        compute_hessian: bool,
+    ):
+        force_field = trainable.to_force_field(x)
+
+        y_ref, _, y_pred, _ = descent.targets.thermo.predict(
+            dataset,
+            force_field,
+            topologies,
+            pathlib.Path.cwd(),
+            None,
+            per_type_scales,
+            verbose,
+        )
+        loss, gradient, hessian = ((y_pred - y_ref) ** 2).sum(), None, None
+
+        if compute_hessian:
+            hessian = descent.utils.loss.approximate_hessian(x, y_pred)
+        if compute_gradient:
+            gradient = torch.autograd.grad(loss, x, retain_graph=True)[0].detach()
+
+        return loss.detach(), gradient, hessian
+
+    return closure_fn

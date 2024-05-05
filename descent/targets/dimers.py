@@ -12,11 +12,14 @@ import torch
 import tqdm
 
 import descent.utils.dataset
+import descent.utils.loss
 import descent.utils.molecule
 import descent.utils.reporting
 
 if typing.TYPE_CHECKING:
     import pandas
+
+    import descent.train
 
 
 EnergyFn = typing.Callable[
@@ -275,6 +278,32 @@ def predict(
         ]
     )
     return torch.cat(reference), torch.cat(predicted)
+
+
+def default_closure(
+    trainable: "descent.train.Trainable",
+    topologies: dict[str, smee.TensorTopology],
+    dataset: datasets.Dataset,
+):
+    """Return a default closure function for training against dimer energies.
+
+    Args:
+        trainable: The wrapper around trainable parameters.
+        topologies: The topologies of the molecules present in the dataset, with keys
+            of mapped SMILES patterns.
+        dataset: The dataset to train against.
+
+    Returns:
+        The default closure function.
+    """
+
+    def loss_fn(_x: torch.Tensor) -> torch.Tensor:
+        y_ref, y_pred = descent.targets.dimers.predict(
+            dataset, trainable.to_force_field(_x), topologies
+        )
+        return ((y_pred - y_ref) ** 2).sum()
+
+    return descent.utils.loss.to_closure(loss_fn)
 
 
 def _plot_energies(energies: dict[str, torch.Tensor]) -> str:

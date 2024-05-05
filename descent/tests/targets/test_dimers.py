@@ -11,6 +11,7 @@ from descent.targets.dimers import (
     compute_dimer_energy,
     create_dataset,
     create_from_des,
+    default_closure,
     extract_smiles,
     predict,
     report,
@@ -182,6 +183,36 @@ def test_predict(mock_dimer, mocker):
     mock_energy_fn.assert_called_once_with(
         mock_top_a, mock_tob_b, mock_ff, pytest.approx(expected_coords)
     )
+
+
+def test_default_closure(mock_dimer, mocker):
+    dataset = create_dataset([mock_dimer])
+
+    mock_x = torch.tensor([2.0], requires_grad=True)
+
+    mock_y_pred = torch.tensor([3.0, 4.0]) * mock_x
+    mock_y_ref = torch.Tensor([-1.23, 4.56])
+
+    mocker.patch(
+        "descent.targets.dimers.predict",
+        autospec=True,
+        return_value=(mock_y_ref, mock_y_pred),
+    )
+    mock_topologies = {
+        mock_dimer["smiles_a"]: mocker.MagicMock(),
+        mock_dimer["smiles_b"]: mocker.MagicMock(),
+    }
+    mock_trainable = mocker.MagicMock()
+
+    closure_fn = default_closure(mock_trainable, mock_topologies, dataset)
+
+    expected_loss = (mock_y_pred - mock_y_ref).pow(2).sum()
+
+    loss, grad, hess = closure_fn(mock_x, compute_gradient=True, compute_hessian=True)
+
+    assert torch.isclose(loss, expected_loss)
+    assert grad.shape == mock_x.shape
+    assert hess.shape == (1, 1)
 
 
 def test_report(tmp_cwd, mock_dimer, mocker):

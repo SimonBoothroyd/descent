@@ -11,12 +11,12 @@ from descent.targets.thermo import (
     SimulationKey,
     _compute_observables,
     _convert_entry_to_system,
-    _map_smiles,
     _Observables,
     _plan_simulations,
     _predict,
     _simulate,
     create_dataset,
+    default_closure,
     default_config,
     extract_smiles,
     predict,
@@ -89,21 +89,6 @@ def mock_hmix() -> DataEntry:
         "units": "kcal/mol",
         "source": None,
     }
-
-
-@pytest.mark.parametrize(
-    "smiles, expected",
-    [
-        ("C", "[C:1]([H:2])([H:3])([H:4])[H:5]"),
-        ("[CH4:1]", "[C:1]([H:2])([H:3])([H:4])[H:5]"),
-        ("[Cl:1][H:2]", "[Cl:1][H:2]"),
-        ("[Cl:2][H:1]", "[Cl:2][H:1]"),
-        ("[Cl:2][H:2]", "[Cl:1][H:2]"),
-        ("[Cl:1][H]", "[Cl:1][H:2]"),
-    ],
-)
-def test_map_smiles(smiles, expected):
-    assert _map_smiles(smiles) == expected
 
 
 def test_create_dataset(mock_density_pure, mock_density_binary):
@@ -533,7 +518,13 @@ def test_predict(tmp_cwd, mock_density_pure, mocker):
     mock_scale = 3.0
 
     y_ref, y_ref_std, y_pred, y_pred_std = predict(
-        dataset, mock_ff, mock_topologies, tmp_cwd, None, {"density": mock_scale}
+        dataset,
+        mock_ff,
+        mock_topologies,
+        tmp_cwd,
+        None,
+        {"density": mock_scale},
+        verbose=True,
     )
 
     mock_compute.assert_called_once_with(
@@ -565,3 +556,30 @@ def test_predict(tmp_cwd, mock_density_pure, mocker):
     assert torch.allclose(y_pred, expected_y_pred)
     assert y_pred_std.shape == expected_y_pred_std.shape
     assert torch.allclose(y_pred_std, expected_y_pred_std)
+
+
+def test_default_closure(tmp_cwd, mock_density_pure, mocker):
+    dataset = create_dataset(mock_density_pure)
+
+    mock_x = torch.tensor([2.0], requires_grad=True)
+
+    mock_y_pred = torch.tensor([3.0, 4.0]) * mock_x
+    mock_y_ref = torch.Tensor([-1.23, 4.56])
+
+    mocker.patch(
+        "descent.targets.thermo.predict",
+        autospec=True,
+        return_value=(mock_y_ref, None, mock_y_pred, None),
+    )
+    mock_topologies = {mock_density_pure["smiles_a"]: mocker.MagicMock()}
+    mock_trainable = mocker.MagicMock()
+
+    closure_fn = default_closure(mock_trainable, mock_topologies, dataset, None)
+
+    expected_loss = (mock_y_pred - mock_y_ref).pow(2).sum()
+
+    loss, grad, hess = closure_fn(mock_x, compute_gradient=True, compute_hessian=True)
+
+    assert torch.isclose(loss, expected_loss)
+    assert grad.shape == mock_x.shape
+    assert hess.shape == (1, 1)
