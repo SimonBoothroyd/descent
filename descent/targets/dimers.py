@@ -275,7 +275,8 @@ def predict(
         *[
             _predict(dimer, force_field, topologies)
             for dimer in descent.utils.dataset.iter_dataset(dataset)
-        ]
+        ],
+        strict=True,
     )
     return torch.cat(reference), torch.cat(predicted)
 

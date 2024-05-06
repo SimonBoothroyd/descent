@@ -41,10 +41,7 @@ dependencies:
   - versioneer
 
   - pre-commit
-  - isort
-  - black
-  - flake8
-  - flake8-pyproject
+  - ruff
   - nbqa
 
   - pytest

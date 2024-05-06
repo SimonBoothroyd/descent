@@ -84,7 +84,6 @@ def combine_closures(
     def combined_closure_fn(
         x: torch.Tensor, compute_gradient: bool, compute_hessian: bool
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
-
         loss = []
         grad = None if not compute_gradient else []
         hess = None if not compute_hessian else []
@@ -92,7 +91,6 @@ def combine_closures(
         verbose_rows = []
 
         for name, closure_fn in closures.items():
-
             local_loss, local_grad, local_hess = closure_fn(
                 x, compute_gradient, compute_hessian
             )

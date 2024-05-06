@@ -610,7 +610,7 @@ def predict(
 
     per_type_scales = per_type_scales if per_type_scales is not None else {}
 
-    for entry, keys in zip(entries, entry_to_simulation):
+    for entry, keys in zip(entries, entry_to_simulation, strict=True):
         value, std = _predict(entry, keys, observables, required_simulations)
 
         type_scale = per_type_scales.get(entry["type"], 1.0)
