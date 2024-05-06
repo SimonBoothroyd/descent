@@ -20,8 +20,8 @@ lint:
 format:
 	$(CONDA_ENV_RUN) ruff format                 $(PACKAGE_DIR)
 	$(CONDA_ENV_RUN) ruff check --fix --select I $(PACKAGE_DIR)
-	$(CONDA_ENV_RUN) nbqa ruff                   examples
-	$(CONDA_ENV_RUN) nbqa ruff --fix --select=I  examples
+	$(CONDA_ENV_RUN) nbqa 'ruff format'                 examples
+	$(CONDA_ENV_RUN) nbqa 'ruff check' --fix --select=I examples
 
 test:
 	$(CONDA_ENV_RUN) pytest -v --cov=$(PACKAGE_NAME) --cov-report=xml --color=yes $(PACKAGE_DIR)/tests/
