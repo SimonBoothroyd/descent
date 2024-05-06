@@ -143,7 +143,8 @@ def test_damping_factor_loss_fn(mocker):
 
 
 @pytest.mark.parametrize(
-    "n_convergence_criteria, n_convergence_steps, step_quality, expected_converged, expected_logs",
+    "n_convergence_criteria, n_convergence_steps, step_quality, expected_converged, "
+    "expected_logs",
     [
         (0, 2, 1.0, False, []),
         (1, 2, 0.0, False, []),
@@ -283,7 +284,7 @@ def test_levenberg_marquardt_adaptive(mocker, caplog):
     ]
     assert len(trust_radius_messages) == len(expected_messages)
 
-    for message, expected in zip(trust_radius_messages, expected_messages):
+    for message, expected in zip(trust_radius_messages, expected_messages, strict=True):
         assert message.startswith(expected)
 
     # mock_step_fn.assert_has_calls(expected_loss_traj, any_order=False)

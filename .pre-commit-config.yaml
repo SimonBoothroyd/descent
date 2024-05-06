@@ -4,12 +4,6 @@ repos:
       - id: ruff
         name: "[Package] Formatting"
         language: system
-        entry: ruff
-        args: [ check ]
+        entry: make
+        args: [ lint ]
         files: \.py$
-
-      - id: ruff-examples
-        name: "[Examples] Formatting"
-        language: system
-        entry: nbqa ruff
-        files: examples/.+\.ipynb$

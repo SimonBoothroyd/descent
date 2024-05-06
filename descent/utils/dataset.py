@@ -19,5 +19,5 @@ def iter_dataset(dataset: datasets.Dataset) -> typing.Iterator[dict[str, typing.
 
     columns = [*dataset.features]
 
-    for row in zip(*[dataset[column] for column in columns]):
-        yield {column: v for column, v in zip(columns, row)}
+    for row in zip(*[dataset[column] for column in columns], strict=True):
+        yield dict(zip(columns, row, strict=True))
