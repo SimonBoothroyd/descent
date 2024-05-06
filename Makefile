@@ -1,5 +1,5 @@
 PACKAGE_NAME := descent
-PACKAGE_DIR  := $(PACKAGE_DIR)
+PACKAGE_DIR  := descent
 
 CONDA_ENV_RUN := conda run --no-capture-output --name $(PACKAGE_NAME)
 
