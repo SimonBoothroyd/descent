@@ -169,6 +169,85 @@ def create_dataset(*rows: DataEntry) -> datasets.Dataset:
     return dataset
 
 
+def create_from_evaluator(
+        dataset_file: pathlib.Path
+) -> datasets.Dataset:
+    """
+    Create a dataset from an evaluator PhysicalPropertyDataSet
+
+    Args:
+        dataset_file: The path to the evaluator dataset
+
+    Returns:
+        The created dataset
+    """
+    import json
+    from openff.units import unit
+
+    _evaluator_to_prop = {
+        "openff.evaluator.properties.density.Density": "density",
+        "openff.evaluator.properties.enthalpy.EnthalpyOfMixing": "hmix",
+        "openff.evaluator.properties.enthalpy.EnthalpyOfVaporization": "hvap"
+    }
+    _prop_units = {
+        "density": "g/mL",
+        "hmix": "kcal/mol",
+        "hvap": "kcal/mol"
+    }
+
+    properties: list[DataEntry] = []
+    property_data = json.load(dataset_file.open())
+    for phys_prop in property_data["properties"]:
+        smiles_and_role = [
+            (comp["smiles"], comp["smiles"] + "{" + comp["role"]["value"] + "}")
+            for comp in phys_prop["substance"]["components"]
+        ]
+        smiles_a, role_a = smiles_and_role[0]
+        x_a = phys_prop["substance"]["amounts"][role_a][0]["value"]
+        if len(smiles_and_role) == 1:
+            smiles_b, x_b = None, None
+        else:
+            smiles_b, role_b = smiles_and_role[1]
+            x_b = phys_prop["substance"]["amounts"][role_b][0]["value"]
+
+        temp_unit = getattr(
+            unit,
+            phys_prop["thermodynamic_state"]["temperature"]["unit"]
+        )
+        temp = phys_prop["thermodynamic_state"]["temperature"]["value"] * temp_unit
+        pressure_unit = getattr(
+            unit,
+            phys_prop["thermodynamic_state"]["pressure"]["unit"]
+        )
+        pressure = phys_prop["thermodynamic_state"]["pressure"]["value"] * pressure_unit
+        value = phys_prop["value"]["value"] * getattr(
+            unit,
+            phys_prop["value"]["unit"]
+        )
+        std = phys_prop["uncertainty"]["value"] * getattr(
+            unit,
+            phys_prop["uncertainty"]["unit"]
+        )
+        prop_type = _evaluator_to_prop[phys_prop["@type"]]
+        default_units = getattr(unit, _prop_units[prop_type])
+        prop = {
+            "type": prop_type,
+            "smiles_a": smiles_a,
+            "x_a": x_a,
+            "smiles_b": smiles_b,
+            "x_b": x_b,
+            "temperature": temp.to(unit.kelvin).m,
+            "pressure": pressure.to(unit.atm).m,
+            "value": value.to(default_units).m,
+            "units": _prop_units[prop_type],
+            "std": std.to(default_units).m,
+            "source": phys_prop["source"]["doi"]
+        }
+        properties.append(prop)
+
+    return create_dataset(*properties)
+
+
 def extract_smiles(dataset: datasets.Dataset) -> list[str]:
     """Return a list of unique SMILES strings in the dataset.
 
