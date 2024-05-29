@@ -169,9 +169,7 @@ def create_dataset(*rows: DataEntry) -> datasets.Dataset:
     return dataset
 
 
-def create_from_evaluator(
-        dataset_file: pathlib.Path
-) -> datasets.Dataset:
+def create_from_evaluator(dataset_file: pathlib.Path) -> datasets.Dataset:
     """
     Create a dataset from an evaluator PhysicalPropertyDataSet
 
@@ -182,18 +180,15 @@ def create_from_evaluator(
         The created dataset
     """
     import json
+
     from openff.units import unit
 
     _evaluator_to_prop = {
         "openff.evaluator.properties.density.Density": "density",
         "openff.evaluator.properties.enthalpy.EnthalpyOfMixing": "hmix",
-        "openff.evaluator.properties.enthalpy.EnthalpyOfVaporization": "hvap"
+        "openff.evaluator.properties.enthalpy.EnthalpyOfVaporization": "hvap",
     }
-    _prop_units = {
-        "density": "g/mL",
-        "hmix": "kcal/mol",
-        "hvap": "kcal/mol"
-    }
+    _prop_units = {"density": "g/mL", "hmix": "kcal/mol", "hvap": "kcal/mol"}
 
     properties: list[DataEntry] = []
     property_data = json.load(dataset_file.open())
@@ -211,22 +206,16 @@ def create_from_evaluator(
             x_b = phys_prop["substance"]["amounts"][role_b][0]["value"]
 
         temp_unit = getattr(
-            unit,
-            phys_prop["thermodynamic_state"]["temperature"]["unit"]
+            unit, phys_prop["thermodynamic_state"]["temperature"]["unit"]
         )
         temp = phys_prop["thermodynamic_state"]["temperature"]["value"] * temp_unit
         pressure_unit = getattr(
-            unit,
-            phys_prop["thermodynamic_state"]["pressure"]["unit"]
+            unit, phys_prop["thermodynamic_state"]["pressure"]["unit"]
         )
         pressure = phys_prop["thermodynamic_state"]["pressure"]["value"] * pressure_unit
-        value = phys_prop["value"]["value"] * getattr(
-            unit,
-            phys_prop["value"]["unit"]
-        )
+        value = phys_prop["value"]["value"] * getattr(unit, phys_prop["value"]["unit"])
         std = phys_prop["uncertainty"]["value"] * getattr(
-            unit,
-            phys_prop["uncertainty"]["unit"]
+            unit, phys_prop["uncertainty"]["unit"]
         )
         prop_type = _evaluator_to_prop[phys_prop["@type"]]
         default_units = getattr(unit, _prop_units[prop_type])
@@ -241,7 +230,7 @@ def create_from_evaluator(
             "value": value.to(default_units).m,
             "units": _prop_units[prop_type],
             "std": std.to(default_units).m,
-            "source": phys_prop["source"]["doi"]
+            "source": phys_prop["source"]["doi"],
         }
         properties.append(prop)
 
