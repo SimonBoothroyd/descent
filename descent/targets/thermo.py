@@ -192,7 +192,13 @@ def create_from_evaluator(dataset_file: pathlib.Path) -> datasets.Dataset:
 
     properties: list[DataEntry] = []
     property_data = json.load(dataset_file.open())
+
     for phys_prop in property_data["properties"]:
+        try:
+            prop_type = _evaluator_to_prop[phys_prop["@type"]]
+        except KeyError:
+            raise KeyError(f"{phys_prop['@type']} not currently supported.") from None
+
         smiles_and_role = [
             (comp["smiles"], comp["smiles"] + "{" + comp["role"]["value"] + "}")
             for comp in phys_prop["substance"]["components"]
@@ -217,7 +223,6 @@ def create_from_evaluator(dataset_file: pathlib.Path) -> datasets.Dataset:
         std = phys_prop["uncertainty"]["value"] * getattr(
             unit, phys_prop["uncertainty"]["unit"]
         )
-        prop_type = _evaluator_to_prop[phys_prop["@type"]]
         default_units = getattr(unit, _prop_units[prop_type])
         prop = {
             "type": prop_type,

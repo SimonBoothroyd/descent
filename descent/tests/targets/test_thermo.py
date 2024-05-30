@@ -16,6 +16,7 @@ from descent.targets.thermo import (
     _predict,
     _simulate,
     create_dataset,
+    create_from_evaluator,
     default_closure,
     default_config,
     extract_smiles,
@@ -583,3 +584,30 @@ def test_default_closure(tmp_cwd, mock_density_pure, mocker):
     assert torch.isclose(loss, expected_loss)
     assert grad.shape == mock_x.shape
     assert hess.shape == (1, 1)
+
+
+def test_create_from_evaluator(data_dir):
+    dataset = create_from_evaluator(dataset_file=data_dir / "evaluator_mock.json")
+
+    entries = list(descent.utils.dataset.iter_dataset(dataset))
+    expected = {
+        "smiles_a": "[C:1]([C:2]([O:3][H:9])([H:7])[H:8])([H:4])([H:5])[H:6]",
+        "x_a": 0.48268,
+        "smiles_b": "[O:1]([H:2])[H:3]",
+        "x_b": 0.51732,
+        "temperature": 298.15,
+        "pressure": 0.999753269183321,
+        "value": 0.99,
+        "std": 0.000505,
+        "units": "g/mL",
+        "source": "mock",
+        "type": "density",
+    }
+    assert entries[0] == expected
+
+
+def test_unsupported_property(data_dir):
+    with pytest.raises(KeyError):
+        _ = create_from_evaluator(
+            dataset_file=data_dir / "missing_property_evaluator.json"
+        )
