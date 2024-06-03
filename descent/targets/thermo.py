@@ -207,7 +207,7 @@ def create_from_evaluator(dataset_file: pathlib.Path) -> datasets.Dataset:
         x_a = phys_prop["substance"]["amounts"][role_a][0]["value"]
         if len(smiles_and_role) == 1:
             smiles_b, x_b = None, None
-        elif:
+        elif len(smiles_and_role) == 2:
             smiles_b, role_b = smiles_and_role[1]
             x_b = phys_prop["substance"]["amounts"][role_b][0]["value"]
         else:
