@@ -207,9 +207,11 @@ def create_from_evaluator(dataset_file: pathlib.Path) -> datasets.Dataset:
         x_a = phys_prop["substance"]["amounts"][role_a][0]["value"]
         if len(smiles_and_role) == 1:
             smiles_b, x_b = None, None
-        else:
+        elif:
             smiles_b, role_b = smiles_and_role[1]
             x_b = phys_prop["substance"]["amounts"][role_b][0]["value"]
+        else:
+            raise NotImplementedError("up to binary mixtures are currently supported")
 
         temp_unit = getattr(
             unit, phys_prop["thermodynamic_state"]["temperature"]["unit"]
