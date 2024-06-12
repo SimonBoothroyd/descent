@@ -318,32 +318,25 @@ def _bulk_config(temperature: float, pressure: float) -> SimulationConfig:
     pressure = pressure * openmm.unit.atmosphere
 
     return SimulationConfig(
-        max_mols=256,
+        max_mols=1000,
         gen_coords=smee.mm.GenerateCoordsConfig(),
         equilibrate=[
             smee.mm.MinimizationConfig(),
-            # short NVT equilibration simulation
-            smee.mm.SimulationConfig(
-                temperature=temperature,
-                pressure=None,
-                n_steps=50000,
-                timestep=1.0 * openmm.unit.femtosecond,
-            ),
             # short NPT equilibration simulation
             smee.mm.SimulationConfig(
                 temperature=temperature,
                 pressure=pressure,
-                n_steps=50000,
-                timestep=1.0 * openmm.unit.femtosecond,
+                n_steps=100000,
+                timestep=2.0 * openmm.unit.femtosecond,
             ),
         ],
         production=smee.mm.SimulationConfig(
             temperature=temperature,
             pressure=pressure,
-            n_steps=500000,
+            n_steps=1000000,
             timestep=2.0 * openmm.unit.femtosecond,
         ),
-        production_frequency=1000,
+        production_frequency=2000,
     )
 
 
@@ -758,23 +751,41 @@ def default_closure(
         compute_hessian: bool,
     ):
         force_field = trainable.to_force_field(x)
+        total_loss, grad, hess = torch.zeros(size=(1,), device=x.device.type), None, None
+        for i in range(len(dataset)):
+            y_ref, _, y_pred, _ = descent.targets.thermo.predict(
+                dataset.select(indices=[i]),
+                force_field,
+                topologies,
+                pathlib.Path.cwd(),
+                None,
+                per_type_scales,
+                verbose,
+            )
+            loss = (y_pred - y_ref) ** 2
 
-        y_ref, _, y_pred, _ = descent.targets.thermo.predict(
-            dataset,
-            force_field,
-            topologies,
-            pathlib.Path.cwd(),
-            None,
-            per_type_scales,
-            verbose,
-        )
-        loss, gradient, hessian = ((y_pred - y_ref) ** 2).sum(), None, None
+            if compute_hessian:
+                hessian = descent.utils.loss.approximate_hessian(x, y_pred).detach()
+                if hess is None:
+                    hess = hessian
+                else:
+                    hess += hessian
+            if compute_gradient:
+                gradient = torch.autograd.grad(loss, x, retain_graph=True)[0].detach()
+                if grad is None:
+                    grad = gradient
+                else:
+                    grad += gradient
 
-        if compute_hessian:
-            hessian = descent.utils.loss.approximate_hessian(x, y_pred)
-        if compute_gradient:
-            gradient = torch.autograd.grad(loss, x, retain_graph=True)[0].detach()
+            total_loss += loss.detach()
+            # clear the graph
+            torch.cuda.empty_cache()
 
-        return loss.detach(), gradient, hessian
+        # if compute_gradient:
+        #     grad = sum(grad[1:], grad[0]).detach()
+        # if compute_hessian:
+        #     hess = sum(hess[1:], hess[0]).detach()
+        # total_loss = sum(total_loss[1:], total_loss[0]).detach()
+        return total_loss, grad, hess
 
     return closure_fn

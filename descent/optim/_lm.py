@@ -529,7 +529,7 @@ def levenberg_marquardt(
     loss_history = []
     has_converged = False
 
-    best_x, best_loss = x.clone(), closure_prev[0]
+    best_x, best_loss = x.clone().detach(), closure_prev[0]
 
     for step in range(config.max_steps):
         loss_prev, gradient_prev, hessian_prev = closure_prev
@@ -537,6 +537,7 @@ def levenberg_marquardt(
         dx, expected_improvement, damping_adjusted, damping_factor = _step(
             gradient_prev, hessian_prev, trust_radius, config
         )
+        _LOGGER.info(f"The current step is {dx.detach().cpu().numpy()}")
 
         if config.mode.lower() == _HESSIAN_SEARCH:
             dx, expected_improvement = _hessian_diagonal_search(
@@ -553,6 +554,7 @@ def levenberg_marquardt(
         _LOGGER.info(f"{config.mode} step found (length {dx_norm:.4e})")
 
         x_next = correct_fn(x + dx).requires_grad_(x.requires_grad)
+        _LOGGER.info(f"The next set of parameters to try {x_next.detach().cpu().numpy()}")
 
         loss, gradient, hessian = closure_fn(x_next, True, True)
         loss_delta = loss - loss_prev
