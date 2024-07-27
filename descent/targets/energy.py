@@ -119,7 +119,7 @@ def predict(
         topology = topologies[smiles]
 
         energy_pred = smee.compute_energy(topology, force_field, coords)
-        forces_pred = torch.autograd.grad(
+        forces_pred = -torch.autograd.grad(
             energy_pred.sum(),
             coords,
             create_graph=True,
