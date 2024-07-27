@@ -4,7 +4,11 @@ descent
 Optimize classical force field parameters against reference data
 """
 
-from . import _version
+import importlib.metadata
 
-__version__ = _version.get_versions()["version"]
+try:
+    __version__ = importlib.metadata.version("descent")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "0+unknown"
+
 __all__ = ["__version__"]

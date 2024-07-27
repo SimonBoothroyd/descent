@@ -364,7 +364,7 @@ def report(
         energies.update(
             (
                 force_field_name,
-                _predict(dimer, force_field, topologies[force_field_name])[1]
+                _predict(dimer, force_field, topologies[force_field_name])[1],
             )
             for force_field_name, force_field in force_fields.items()
         )
