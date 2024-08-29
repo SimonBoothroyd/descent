@@ -6,6 +6,7 @@ import datasets
 import datasets.table
 import pyarrow
 import smee
+import smee.utils
 import torch
 
 DATA_SCHEMA = pyarrow.schema(
@@ -110,12 +111,13 @@ def predict(
         energy_ref = entry["energy"]
         forces_ref = entry["forces"].reshape(len(energy_ref), -1, 3)
 
-        coords = (
-            entry["coords"]
-            .reshape(len(energy_ref), -1, 3)
-            .detach()
-            .requires_grad_(True)
+        coords_flat = smee.utils.tensor_like(
+            entry["coords"], force_field.potentials[0].parameters
         )
+
+        coords = (
+            coords_flat.reshape(len(energy_ref), -1, 3)
+        ).detach().requires_grad_(True)
         topology = topologies[smiles]
 
         energy_pred = smee.compute_energy(topology, force_field, coords)
@@ -150,9 +152,18 @@ def predict(
         energy_pred_all.append(scale_energy * (energy_pred - energy_pred_0))
         forces_pred_all.append(scale_forces * forces_pred.reshape(-1, 3))
 
+    energy_pred_all = torch.cat(energy_pred_all)
+    forces_pred_all = torch.cat(forces_pred_all)
+
+    energy_ref_all = torch.cat(energy_ref_all)
+    energy_ref_all = smee.utils.tensor_like(energy_ref_all, energy_pred_all)
+
+    forces_ref_all = torch.cat(forces_ref_all)
+    forces_ref_all = smee.utils.tensor_like(forces_ref_all, forces_pred_all)
+
     return (
-        torch.cat(energy_ref_all),
-        torch.cat(energy_pred_all),
-        torch.cat(forces_ref_all),
-        torch.cat(forces_pred_all),
+        energy_ref_all,
+        energy_pred_all,
+        forces_ref_all,
+        forces_pred_all,
     )
