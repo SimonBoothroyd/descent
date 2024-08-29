@@ -104,7 +104,7 @@ def combine_closures(
 
             if verbose:
                 verbose_rows.append(
-                    {"target": name, "loss": float(f"{local_loss:.5f}")}
+                    {"target": name, "loss": float(f"{local_loss.item():.5f}")}
                 )
 
         loss = sum(loss[1:], loss[0])
