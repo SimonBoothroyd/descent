@@ -404,8 +404,52 @@ def default_config(
         raise NotImplementedError(phase)
 
 
+def select_config(
+    phase: Phase,
+    temperature: float,
+    pressure: float | None,
+    custom_config: dict[str, SimulationConfig] | None,
+) -> SimulationConfig:
+    """
+    A helper method to choose the simulation config based on the phase
+        with the desired temperature and pressure.
+    If a custom configuration is not available the default will be used.
+
+    Args:
+        phase: The phase of the simulation.
+        temperature: The temperature [K] at which to run the simulation.
+        pressure: The pressure [atm] at which to run the simulation
+        custom_config: The custom simulation configuration for each phase.
+
+    Returns:
+        The simulation configuration for the given phase.
+    """
+    if custom_config is None:
+        custom_config = {}
+
+    try:
+        config = custom_config[phase]
+        # edit the config with the desired temperature and pressure
+        temperature = temperature * openmm.unit.kelvin
+        pressure = pressure * openmm.unit.atmosphere
+        for stage in config.equilibrate:
+            if isinstance(stage, smee.mm.SimulationConfig):
+                stage.temperature = temperature
+                stage.pressure = pressure
+
+        config.production.temperature = temperature
+        config.production.pressure = pressure
+
+    except KeyError:
+        config = default_config(phase=phase, temperature=temperature, pressure=pressure)
+
+    return config
+
+
 def _plan_simulations(
-    entries: list[DataEntry], topologies: dict[str, smee.TensorTopology]
+    entries: list[DataEntry],
+    topologies: dict[str, smee.TensorTopology],
+    simulation_config: dict[str, SimulationConfig] | None = None,
 ) -> tuple[dict[Phase, _SystemDict], list[dict[str, SimulationKey]]]:
     """Plan the simulations required to compute the properties in a dataset.
 
@@ -413,6 +457,8 @@ def _plan_simulations(
         entries: The entries in the dataset.
         topologies: The topologies of the molecules present in the dataset, with keys
             of mapped SMILES patterns.
+        simulation_config: The (optional) simulation configuration, should contain
+            a config for each phase if not provided the default will be used.
 
     Returns:
         The systems to simulate and the simulations required to compute each property.
@@ -428,7 +474,9 @@ def _plan_simulations(
 
         required_sims: dict[str, SimulationKey] = {}
 
-        bulk_config = default_config("bulk", entry["temperature"], entry["pressure"])
+        bulk_config = select_config(
+            "bulk", entry["temperature"], entry["pressure"], simulation_config
+        )
         max_mols = bulk_config.max_mols
 
         if _REQUIRES_BULK_SIM[data_type]:
@@ -506,6 +554,7 @@ def _compute_observables(
     force_field: smee.TensorForceField,
     output_dir: pathlib.Path,
     cached_dir: pathlib.Path | None,
+    simulation_config: dict[str, SimulationConfig] | None,
 ) -> _Observables:
     traj_hash = hashlib.sha256(pickle.dumps(key)).hexdigest()
     traj_name = f"{phase}-{traj_hash}-frames.msgpack"
@@ -529,7 +578,12 @@ def _compute_observables(
 
     output_path = output_dir / traj_name
 
-    config = default_config(phase, key.temperature, key.pressure)
+    config = select_config(
+        phase=phase,
+        temperature=key.temperature,
+        pressure=key.pressure,
+        custom_config=simulation_config,
+    )
     _simulate(system, force_field, config, output_path)
 
     return _Observables(
@@ -646,6 +700,7 @@ def predict(
     cached_dir: pathlib.Path | None = None,
     per_type_scales: dict[DataType, float] | None = None,
     verbose: bool = False,
+    simulation_config: dict[str, SimulationConfig] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Predict the properties in a dataset using molecular simulation, or by reweighting
     previous simulation data.
@@ -661,15 +716,25 @@ def predict(
         per_type_scales: The scale factor to apply to each data type. A default of 1.0
             will be used for any data type not specified.
         verbose: Whether to log additional information.
+        simulation_config: The (optional) simulation configuration, should contain
+            a config for each phase if not provided the default will be used.
     """
 
     entries: list[DataEntry] = [*descent.utils.dataset.iter_dataset(dataset)]
 
-    required_simulations, entry_to_simulation = _plan_simulations(entries, topologies)
+    required_simulations, entry_to_simulation = _plan_simulations(
+        entries, topologies, simulation_config
+    )
     observables = {
         phase: {
             key: _compute_observables(
-                phase, key, system, force_field, output_dir, cached_dir
+                phase,
+                key,
+                system,
+                force_field,
+                output_dir,
+                cached_dir,
+                simulation_config,
             )
             for key, system in systems.items()
         }
@@ -736,6 +801,7 @@ def default_closure(
     dataset: datasets.Dataset,
     per_type_scales: dict[DataType, float] | None = None,
     verbose: bool = False,
+    simulation_config: dict[str, SimulationConfig] | None = None,
 ) -> descent.optim.ClosureFn:
     """Return a default closure function for training against thermodynamic
     properties.
@@ -747,6 +813,8 @@ def default_closure(
         dataset: The dataset to train against.
         per_type_scales: The scale factor to apply to each data type.
         verbose: Whether to log additional information about predictions.
+        simulation_config: The (optional) simulation configuration, should contain
+            a config for each phase if not provided the default will be used.
 
     Returns:
         The default closure function.
@@ -767,6 +835,7 @@ def default_closure(
             None,
             per_type_scales,
             verbose,
+            simulation_config,
         )
         loss, gradient, hessian = ((y_pred - y_ref) ** 2).sum(), None, None
 

@@ -8,6 +8,7 @@ import uncertainties.unumpy
 import descent.utils.dataset
 from descent.targets.thermo import (
     DataEntry,
+    SimulationConfig,
     SimulationKey,
     _compute_observables,
     _convert_entry_to_system,
@@ -21,6 +22,7 @@ from descent.targets.thermo import (
     default_config,
     extract_smiles,
     predict,
+    select_config,
 )
 
 
@@ -178,8 +180,60 @@ def test_default_config(phase, pressure, expected_n_mols):
         )
 
 
+def test_select_config():
+    custom_config = {
+        "bulk": SimulationConfig(
+            max_mols=1000,
+            gen_coords=smee.mm.GenerateCoordsConfig(),
+            equilibrate=[
+                smee.mm.MinimizationConfig(),
+                # short NVT equilibration simulation
+                smee.mm.SimulationConfig(
+                    temperature=300 * openmm.unit.kelvin,
+                    pressure=None,
+                    n_steps=50000,
+                    timestep=2.0 * openmm.unit.femtosecond,
+                ),
+                smee.mm.SimulationConfig(
+                    temperature=300 * openmm.unit.kelvin,
+                    pressure=1 * openmm.unit.atmosphere,
+                    n_steps=100000,
+                    timestep=2.0 * openmm.unit.femtosecond,
+                ),
+            ],
+            production=smee.mm.SimulationConfig(
+                temperature=300 * openmm.unit.kelvin,
+                pressure=1 * openmm.unit.atmosphere,
+                n_steps=1000000,
+                timestep=2.0 * openmm.unit.femtosecond,
+            ),
+            production_frequency=2000,
+        )
+    }
+    temperature = 298.15 * openmm.unit.kelvin
+    pressure = 1 * openmm.unit.atmosphere
+    config = select_config(
+        phase="bulk",
+        temperature=temperature.value_in_unit(openmm.unit.kelvin),
+        pressure=pressure.value_in_unit(openmm.unit.atmosphere),
+        custom_config=custom_config,
+    )
+    # make sure the custom config has been changed to match what was requested
+    for stage in config.equilibrate:
+        if isinstance(stage, smee.mm.SimulationConfig):
+            assert stage.temperature == temperature
+            assert stage.pressure == pressure
+
+    assert config.production.temperature == temperature
+    assert config.production.pressure == pressure
+    assert config.max_mols == 1000
+
+
+@pytest.mark.parametrize(
+    "max_mols", [pytest.param(256, id="256"), pytest.param(1000, id="1000")]
+)
 def test_plan_simulations(
-    mock_density_pure, mock_density_binary, mock_hvap, mock_hmix, mocker
+    mock_density_pure, mock_density_binary, mock_hvap, mock_hmix, mocker, max_mols
 ):
     topology_co = mocker.Mock()
     topology_cco = mocker.Mock()
@@ -187,8 +241,26 @@ def test_plan_simulations(
 
     topologies = {"CO": topology_co, "CCO": topology_cco, "CCCC": topology_cccc}
 
+    # some mock config
+    custom_config = {
+        "bulk": SimulationConfig(
+            max_mols=max_mols,
+            gen_coords=smee.mm.GenerateCoordsConfig(),
+            equilibrate=[smee.mm.MinimizationConfig()],
+            production=smee.mm.SimulationConfig(
+                temperature=300 * openmm.unit.kelvin,
+                pressure=None,
+                n_steps=5000,
+                timestep=1.0 * openmm.unit.femtosecond,
+            ),
+            production_frequency=1000,
+        )
+    }
+
     required_simulations, entry_to_simulation = _plan_simulations(
-        [mock_density_pure, mock_density_binary, mock_hvap, mock_hmix], topologies
+        [mock_density_pure, mock_density_binary, mock_hvap, mock_hmix],
+        topologies,
+        custom_config,
     )
 
     assert sorted(required_simulations) == ["bulk", "vacuum"]
@@ -202,25 +274,25 @@ def test_plan_simulations(
 
     expected_cccc_key = SimulationKey(
         ("CCCC",),
-        (256,),
+        (max_mols,),
         mock_hvap["temperature"],
         mock_hvap["pressure"],
     )
     expected_co_key = SimulationKey(
         ("CO",),
-        (256,),
+        (max_mols,),
         mock_density_pure["temperature"],
         mock_density_pure["pressure"],
     )
     expected_cco_key = SimulationKey(
         ("CCO",),
-        (256,),
+        (max_mols,),
         mock_density_binary["temperature"],
         mock_density_binary["pressure"],
     )
     expected_cco_co_key = SimulationKey(
         ("CCO", "CO"),
-        (128, 128),
+        (max_mols / 2, max_mols / 2),
         mock_density_binary["temperature"],
         mock_density_binary["pressure"],
     )
@@ -234,16 +306,19 @@ def test_plan_simulations(
 
     assert sorted(required_simulations["bulk"]) == sorted(expected_bulk_keys)
 
-    assert required_simulations["bulk"][expected_cccc_key].n_copies == [256]
+    assert required_simulations["bulk"][expected_cccc_key].n_copies == [max_mols]
     assert required_simulations["bulk"][expected_cccc_key].topologies == [topology_cccc]
 
-    assert required_simulations["bulk"][expected_cco_key].n_copies == [256]
+    assert required_simulations["bulk"][expected_cco_key].n_copies == [max_mols]
     assert required_simulations["bulk"][expected_cco_key].topologies == [topology_cco]
 
-    assert required_simulations["bulk"][expected_co_key].n_copies == [256]
+    assert required_simulations["bulk"][expected_co_key].n_copies == [max_mols]
     assert required_simulations["bulk"][expected_co_key].topologies == [topology_co]
 
-    assert required_simulations["bulk"][expected_cco_co_key].n_copies == [128, 128]
+    assert required_simulations["bulk"][expected_cco_co_key].n_copies == [
+        max_mols / 2,
+        max_mols / 2,
+    ]
     assert required_simulations["bulk"][expected_cco_co_key].topologies == [
         topology_cco,
         topology_co,
