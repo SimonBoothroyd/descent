@@ -7,6 +7,7 @@ import pydantic
 import pytest
 import smee
 import smee.converters
+import smee.utils
 import torch
 
 from descent.train import AttributeConfig, ParameterConfig, Trainable, _PotentialKey
@@ -44,6 +45,45 @@ def mock_ff() -> smee.TensorForceField:
     assert bond_ids == expected_bond_ids
 
     return ff
+
+
+@pytest.fixture()
+def water_sites_ff():
+    interachange = openff.interchange.Interchange.from_smirnoff(
+        openff.toolkit.ForceField("tip4p_fb.offxml"),
+        openff.toolkit.Molecule.from_smiles("O").to_topology(),
+    )
+    ff, _ = smee.converters.convert_interchange(interachange)
+    # make sure we have vsites in the force field
+    assert ff.v_sites is not None
+    # this is awkward to specify in the yaml config file can we make it easier?
+    expected_ids = ["[#1:2]-[#8X2H2+0:1]-[#1:3] EP once"]
+    vsite_ids = [key.id for key in ff.v_sites.keys]
+    assert vsite_ids == expected_ids
+
+    return ff
+
+
+@pytest.fixture()
+def mock_vsite_configs(water_sites_ff):
+    return ParameterConfig(
+        cols=["distance"],
+        scales={"distance": 10.0},
+        limits={"distance": (-1.0, -0.01)},
+        include=[water_sites_ff.v_sites.keys[0]],
+    )
+
+
+@pytest.fixture()
+def mock_water_parameter_config(water_sites_ff):
+    return {
+        "vdW": ParameterConfig(
+            cols=["epsilon", "sigma"],
+            scales={"epsilon": 10.0, "sigma": 1.0},
+            limits={"epsilon": (0.0, None), "sigma": (0.0, None)},
+            include=[water_sites_ff.potentials_by_type["vdW"].parameter_keys[0]],
+        ),
+    }
 
 
 @pytest.fixture()
@@ -268,3 +308,122 @@ class TestTrainable:
 
         assert values.shape == expected_values.shape
         assert torch.allclose(values, expected_values)
+
+    def test_init_vsites(
+        self, water_sites_ff, mock_vsite_configs, mock_water_parameter_config
+    ):
+        trainable = Trainable(
+            water_sites_ff,
+            parameters=mock_water_parameter_config,
+            attributes={},
+            vsites=mock_vsite_configs,
+        )
+
+        assert trainable._param_types == ["vdW"]
+        # check we have a vdW parameter for the oxygen, hydrogen and vsite
+        assert trainable._param_shapes == [(3, 2)]
+        assert trainable._attr_types == []
+
+        assert trainable._values.shape == (9,)
+        assert torch.allclose(
+            trainable._values,
+            torch.cat(
+                [
+                    water_sites_ff.potentials_by_type["vdW"].parameters.flatten(),
+                    water_sites_ff.v_sites.parameters.flatten(),
+                ]
+            ),
+        )
+
+        # check frozen parameters
+        # vdW params: eps, sig, eps, sig where only first smirks is unfrozen
+        # vsite params: dist, inplane, outplane where first smirks is unfrozen
+        expected_unfrozen_ids = torch.tensor([0, 1, 6])
+        assert (trainable._unfrozen_idxs == expected_unfrozen_ids).all()
+
+        assert torch.allclose(
+            trainable._clamp_lower,
+            torch.tensor([0.0, 0.0, -1.0], dtype=torch.float64),
+        )
+        assert torch.allclose(
+            trainable._clamp_upper,
+            torch.tensor([torch.inf, torch.inf, -0.01], dtype=torch.float64),
+        )
+        assert torch.allclose(
+            trainable._scales,
+            torch.tensor([10.0, 1.0, 10.0], dtype=torch.float64),
+        )
+
+    def test_to_values_vsites(
+        self, water_sites_ff, mock_vsite_configs, mock_water_parameter_config
+    ):
+        trainable = Trainable(
+            water_sites_ff,
+            parameters=mock_water_parameter_config,
+            attributes={},
+            vsites=mock_vsite_configs,
+        )
+        vdw_params = water_sites_ff.potentials_by_type["vdW"].parameters.flatten()
+        vsite_params = water_sites_ff.v_sites.parameters.flatten()
+
+        expected_values = torch.tensor(
+            [
+                vdw_params[0] * 10,  # scale eps
+                vdw_params[1],  # sigma no scale
+                vsite_params[0] * 10,  # scale vsite distance
+            ]
+        )
+        values = trainable.to_values()
+
+        assert values.shape == expected_values.shape
+        assert torch.allclose(values, expected_values)
+
+    def test_to_force_field_vsites_no_op(
+        self, water_sites_ff, mock_vsite_configs, mock_water_parameter_config
+    ):
+        ff_initial = copy.deepcopy(water_sites_ff)
+
+        trainable = Trainable(
+            water_sites_ff,
+            parameters=mock_water_parameter_config,
+            attributes={},
+            vsites=mock_vsite_configs,
+        )
+
+        ff = trainable.to_force_field(trainable.to_values())
+        assert (
+            ff.potentials_by_type["vdW"].parameters.shape
+            == ff_initial.potentials_by_type["vdW"].parameters.shape
+        )
+        assert torch.allclose(
+            ff.potentials_by_type["vdW"].parameters,
+            ff_initial.potentials_by_type["vdW"].parameters,
+        )
+        # vsite parameters are not float64 in the initial ff
+        vsite_initial = smee.utils.tensor_like(
+            ff_initial.v_sites.parameters, ff.v_sites.parameters
+        )
+
+        assert torch.allclose(
+            ff.v_sites.parameters,
+            vsite_initial,
+        )
+
+    def test_to_force_field_clamp_vsites(
+        self, water_sites_ff, mock_vsite_configs, mock_water_parameter_config
+    ):
+        trainable = Trainable(
+            water_sites_ff,
+            parameters=mock_water_parameter_config,
+            attributes={},
+            vsites=mock_vsite_configs,
+        )
+
+        values = trainable.to_values().detach()
+        # set the distance to outside the clamp region
+        values[-1] = 0.0
+        ff = trainable.to_force_field(values)
+        assert torch.allclose(
+            ff.v_sites.parameters[0],
+            torch.tensor([-0.0100, 3.1416, 0.0000], dtype=torch.float64),
+        )
