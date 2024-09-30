@@ -19,7 +19,7 @@ format:
 	$(CONDA_ENV_RUN) ruff check --fix --select I $(PACKAGE_DIR)
 
 test:
-	$(CONDA_ENV_RUN) pytest -v --cov=$(PACKAGE_NAME) --cov-report=xml --color=yes $(PACKAGE_DIR)/tests/
+	$(CONDA_ENV_RUN) pytest -v --cov=$(PACKAGE_NAME) --cov-append --cov-report=xml --color=yes $(PACKAGE_DIR)/tests/
 
 docs-build:
 	$(CONDA_ENV_RUN) mkdocs build
