@@ -10,11 +10,13 @@ dependencies:
 
   # Core packages
   - smee >=0.10.0
+  - pydantic-units  # TODO: Remove this line once smee deps are updated
 
   - pytorch
-  - pydantic
   - pyarrow
   - datasets
+
+  - pydantic
 
   ### Levenberg Marquardt
   - scipy
