@@ -57,5 +57,6 @@ dependencies:
   - mkdocs-literate-nav
   - mkdocstrings
   - mkdocstrings-python
+  - griffe <1
   - black
   - mike
