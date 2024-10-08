@@ -26,48 +26,53 @@ def _unflatten_tensors(
     return tensors
 
 
-class _PotentialKey(pydantic.BaseModel):
-    """
+if pydantic.__version__.startswith("1."):
+    _PotentialKey = openff.interchange.models.PotentialKey
+    PotentialKeyList = list[_PotentialKey]
+else:
 
-    TODO: Needed until interchange upgrades to pydantic >=2
-    """
+    class _PotentialKey(pydantic.BaseModel):
+        """
 
-    id: str
-    mult: int | None = None
-    associated_handler: str | None = None
-    bond_order: float | None = None
+        TODO: Needed until interchange upgrades to pydantic >=2
+        """
 
-    def __hash__(self) -> int:
-        return hash((self.id, self.mult, self.associated_handler, self.bond_order))
+        id: str
+        mult: int | None = None
+        associated_handler: str | None = None
+        bond_order: float | None = None
 
-    def __eq__(self, other: object) -> bool:
-        import openff.interchange.models
+        def __hash__(self) -> int:
+            return hash((self.id, self.mult, self.associated_handler, self.bond_order))
 
-        return (
-            isinstance(other, (_PotentialKey, openff.interchange.models.PotentialKey))
-            and self.id == other.id
-            and self.mult == other.mult
-            and self.associated_handler == other.associated_handler
-            and self.bond_order == other.bond_order
-        )
+        def __eq__(self, other: object) -> bool:
+            import openff.interchange.models
 
+            return (
+                isinstance(
+                    other, (_PotentialKey, openff.interchange.models.PotentialKey)
+                )
+                and self.id == other.id
+                and self.mult == other.mult
+                and self.associated_handler == other.associated_handler
+                and self.bond_order == other.bond_order
+            )
 
-def _convert_keys(value: typing.Any) -> typing.Any:
-    if not isinstance(value, list):
+    def _convert_keys(value: typing.Any) -> typing.Any:
+        if not isinstance(value, list):
+            return value
+
+        value = [
+            _PotentialKey(**v.dict())
+            if isinstance(v, openff.interchange.models.PotentialKey)
+            else v
+            for v in value
+        ]
         return value
 
-    value = [
-        _PotentialKey(**v.dict())
-        if isinstance(v, openff.interchange.models.PotentialKey)
-        else v
-        for v in value
+    PotentialKeyList = typing.Annotated[
+        list[_PotentialKey], pydantic.BeforeValidator(_convert_keys)
     ]
-    return value
-
-
-PotentialKeyList = typing.Annotated[
-    list[_PotentialKey], pydantic.BeforeValidator(_convert_keys)
-]
 
 
 class AttributeConfig(pydantic.BaseModel):
@@ -89,17 +94,35 @@ class AttributeConfig(pydantic.BaseModel):
         "none indicates no constraint.",
     )
 
-    @pydantic.model_validator(mode="after")
-    def _validate_keys(self):
-        """Ensure that the keys in `scales` and `limits` match `cols`."""
+    if pydantic.__version__.startswith("1."):
 
-        if any(key not in self.cols for key in self.scales):
-            raise ValueError("cannot scale non-trainable parameters")
+        @pydantic.root_validator
+        def _validate_keys(cls, values):
+            cols = values.get("cols")
 
-        if any(key not in self.cols for key in self.limits):
-            raise ValueError("cannot clamp non-trainable parameters")
+            scales = values.get("scales")
+            limits = values.get("limits")
 
-        return self
+            if any(key not in cols for key in scales):
+                raise ValueError("cannot scale non-trainable parameters")
+            if any(key not in cols for key in limits):
+                raise ValueError("cannot clamp non-trainable parameters")
+
+            return values
+
+    else:
+
+        @pydantic.model_validator(mode="after")
+        def _validate_keys(self):
+            """Ensure that the keys in `scales` and `limits` match `cols`."""
+
+            if any(key not in self.cols for key in self.scales):
+                raise ValueError("cannot scale non-trainable parameters")
+
+            if any(key not in self.cols for key in self.limits):
+                raise ValueError("cannot clamp non-trainable parameters")
+
+            return self
 
 
 class ParameterConfig(AttributeConfig):
@@ -118,18 +141,36 @@ class ParameterConfig(AttributeConfig):
         "If ``None``, no parameters will be excluded.",
     )
 
-    @pydantic.model_validator(mode="after")
-    def _validate_include_exclude(self):
-        """Ensure that the keys in `include` and `exclude` are disjoint."""
+    if pydantic.__version__.startswith("1."):
 
-        if self.include is not None and self.exclude is not None:
-            include = {*self.include}
-            exclude = {*self.exclude}
+        @pydantic.root_validator
+        def _validate_include_exclude(cls, values):
+            include = values.get("include")
+            exclude = values.get("exclude")
 
-            if include & exclude:
-                raise ValueError("cannot include and exclude the same parameter")
+            if include is not None and exclude is not None:
+                include = {*include}
+                exclude = {*exclude}
 
-        return self
+                if include & exclude:
+                    raise ValueError("cannot include and exclude the same parameter")
+
+            return values
+
+    else:
+
+        @pydantic.model_validator(mode="after")
+        def _validate_include_exclude(self):
+            """Ensure that the keys in `include` and `exclude` are disjoint."""
+
+            if self.include is not None and self.exclude is not None:
+                include = {*self.include}
+                exclude = {*self.exclude}
+
+                if include & exclude:
+                    raise ValueError("cannot include and exclude the same parameter")
+
+            return self
 
 
 class Trainable:
