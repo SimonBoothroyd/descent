@@ -78,7 +78,7 @@ def test_extract_smiles(mock_meoh_entry, mock_hoh_entry):
                     [9.0, 10.0, 11.0],
                     [12.0, 13.0, 14.0],
                     [15.0, 16.0, 17.0],
-                ]
+                ], dtype=torch.float64
             )
             / math.sqrt(6.0 * 3.0),
             torch.tensor([7.899425506591797, -7.89942741394043]) / math.sqrt(2.0),
@@ -90,7 +90,7 @@ def test_extract_smiles(mock_meoh_entry, mock_hoh_entry):
                     [0.0, -137.45770263671875, 0.0],
                     [102.62999725341797, 68.72884368896484, 0.0],
                     [-102.62999725341797, 68.72884368896484, 0.0],
-                ]
+                ], dtype=torch.float64
             )
             / math.sqrt(6.0 * 3.0),
         ),
@@ -106,7 +106,7 @@ def test_extract_smiles(mock_meoh_entry, mock_hoh_entry):
                     [9.0, 10.0, 11.0],
                     [12.0, 13.0, 14.0],
                     [15.0, 16.0, 17.0],
-                ]
+                ], dtype=torch.float64
             ),
             torch.tensor([0.0, -15.798852920532227]),
             -torch.tensor(
@@ -117,7 +117,7 @@ def test_extract_smiles(mock_meoh_entry, mock_hoh_entry):
                     [0.0, -137.45770263671875, 0.0],
                     [102.62999725341797, 68.72884368896484, 0.0],
                     [-102.62999725341797, 68.72884368896484, 0.0],
-                ]
+                ], dtype=torch.float64
             ),
         ),
     ],
