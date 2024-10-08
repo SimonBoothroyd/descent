@@ -292,11 +292,68 @@ class Trainable:
             smee.utils.tensor_like(clamp_upper, values),
         )
 
+    def _prepare_vsites(
+        self, force_field: smee.TensorForceField, config: ParameterConfig
+    ):
+        """
+        Prepare the vsite parameters for optimisation.
+
+        Args:
+            force_field: The tensor force field with parameters
+                which should be optimised.
+            config: The config of the parameters to train.
+
+        Returns:
+
+        """
+        vsite_parameters = force_field.v_sites.parameters.detach().clone()
+        n_rows = vsite_parameters.shape[0]
+        vsite_parameters_flat = vsite_parameters.flatten()
+        # define the cols as they are not on the tensor model
+        vsite_cols = ["distance", "inPlaneAngle", "outOfPlaneAngle"]
+
+        all_keys = [_PotentialKey(**key.dict()) for key in force_field.v_sites.keys]
+        excluded_keys = config.exclude or []
+        unfrozen_keys = config.include or all_keys
+
+        key_to_row = {key: row_idx for row_idx, key in enumerate(all_keys)}
+        assert len(key_to_row) == len(all_keys), "duplicate keys found"
+
+        unfrozen_rows = {
+            key_to_row[key] for key in unfrozen_keys if key not in excluded_keys
+        }
+
+        unfrozen_idxs = [
+            col_idx + row_idx * vsite_parameters.shape[1]
+            for row_idx in range(n_rows)
+            if row_idx in unfrozen_rows
+            # the vsite model has no parameter cols so define here
+            for col_idx, col in enumerate(vsite_cols)
+            if col in config.cols
+        ]
+        vsite_scales = [config.scales.get(col, 1.0) for col in vsite_cols] * n_rows
+        clamp_lower = [
+            config.limits.get(col, (None, None))[0] for col in vsite_cols
+        ] * n_rows
+        clamp_lower = [-torch.inf if x is None else x for x in clamp_lower]
+        clamp_upper = [
+            config.limits.get(col, (None, None))[1] for col in vsite_cols
+        ] * n_rows
+        clamp_upper = [torch.inf if x is None else x for x in clamp_upper]
+        return (
+            vsite_parameters_flat,
+            torch.tensor(unfrozen_idxs),
+            smee.utils.tensor_like(vsite_scales, vsite_parameters),
+            smee.utils.tensor_like(clamp_lower, vsite_parameters),
+            smee.utils.tensor_like(clamp_upper, vsite_parameters),
+        )
+
     def __init__(
         self,
         force_field: smee.TensorForceField,
         parameters: dict[str, ParameterConfig],
         attributes: dict[str, AttributeConfig],
+        vsites: ParameterConfig | None = None,
     ):
         """
 
@@ -304,8 +361,10 @@ class Trainable:
             force_field: The force field to wrap.
             parameters: Configure which parameters to train.
             attributes: Configure which attributes to train.
+            vsites: Configure which vsite parameters to train.
         """
         self._force_field = force_field
+        self._fit_vsites = False
 
         (
             self._param_types,
@@ -326,20 +385,38 @@ class Trainable:
             attr_clamp_upper,
         ) = self._prepare(force_field, attributes, "attributes")
 
-        self._values = torch.cat([param_values, attr_values])
+        values = [param_values, attr_values]
+        unfrozen_idxs = [param_unfrozen_idxs, attr_unfrozen_idxs + len(param_scales)]
+        scales = [param_scales, attr_scales]
+        clamp_lower = [param_clamp_lower, attr_clamp_lower]
+        clamp_upper = [param_clamp_upper, attr_clamp_upper]
 
-        self._unfrozen_idxs = torch.cat(
-            [param_unfrozen_idxs, attr_unfrozen_idxs + len(param_scales)]
-        ).long()
+        if vsites is not None:
+            (
+                vsite_values,
+                vsite_unfrozen_idxs,
+                vsite_scales,
+                vsite_clamp_lower,
+                vsite_clamp_upper,
+            ) = self._prepare_vsites(force_field, vsites)
+            self._fit_vsites = True
 
-        self._scales = torch.cat([param_scales, attr_scales])[self._unfrozen_idxs]
+            values.append(vsite_values)
+            unfrozen_idxs.append(
+                (vsite_unfrozen_idxs + len(param_scales) + len(attr_scales))
+            )
+            scales.append(vsite_scales)
+            clamp_lower.append(vsite_clamp_lower)
+            clamp_upper.append(vsite_clamp_upper)
 
-        self._clamp_lower = torch.cat([param_clamp_lower, attr_clamp_lower])[
-            self._unfrozen_idxs
-        ]
-        self._clamp_upper = torch.cat([param_clamp_upper, attr_clamp_upper])[
-            self._unfrozen_idxs
-        ]
+        self._values = torch.cat(values)
+
+        self._unfrozen_idxs = torch.cat(unfrozen_idxs).long()
+
+        self._scales = torch.cat(scales)[self._unfrozen_idxs]
+
+        self._clamp_lower = torch.cat(clamp_lower)[self._unfrozen_idxs]
+        self._clamp_upper = torch.cat(clamp_upper)[self._unfrozen_idxs]
 
     @torch.no_grad()
     def to_values(self) -> torch.Tensor:
@@ -361,17 +438,28 @@ class Trainable:
         values[self._unfrozen_idxs] = (values_flat / self._scales).clamp(
             min=self._clamp_lower, max=self._clamp_upper
         )
-        values = _unflatten_tensors(values, self._param_shapes + self._attr_shapes)
+        shapes = self._param_shapes + self._attr_shapes
+
+        if self._fit_vsites:
+            shapes.append(self._force_field.v_sites.parameters.shape)
+
+        values = _unflatten_tensors(values, shapes)
 
         params = values[: len(self._param_shapes)]
 
         for potential_type, param in zip(self._param_types, params, strict=True):
             potentials[potential_type].parameters = param
 
-        attrs = values[len(self._param_shapes) :]
+        attrs = values[
+            len(self._param_shapes) : len(self._param_shapes) + len(self._attr_shapes)
+        ]
 
         for potential_type, attr in zip(self._attr_types, attrs, strict=True):
             potentials[potential_type].attributes = attr
+
+        if self._fit_vsites:
+            vsite_params = values[len(self._param_shapes) + len(self._attr_shapes) :]
+            self._force_field.v_sites.parameters = vsite_params[0]
 
         return self._force_field
 
