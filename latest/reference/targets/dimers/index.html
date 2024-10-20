@@ -20,7 +20,7 @@
       
       
       <link rel="icon" href="../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.39">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.41">
     
     
       
@@ -28,7 +28,7 @@
       
     
     
-      <link rel="stylesheet" href="../../../assets/stylesheets/main.8c3ca2c6.min.css">
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.0253249f.min.css">
       
         
         <link rel="stylesheet" href="../../../assets/stylesheets/palette.06af60db.min.css">
@@ -1123,7 +1123,7 @@
 
     <div class="doc doc-contents first">
 
-      <p>Train against dimer energies.</p>
+        <p>Train against dimer energies.</p>
 
 
 
@@ -1239,8 +1239,7 @@
               Bases: <code><span title="typing.TypedDict">TypedDict</span></code></p>
 
 
-
-      <p>Represents a single experimental data point.</p>
+        <p>Represents a single experimental data point.</p>
 
 
 
@@ -1286,7 +1285,7 @@
 
     <div class="doc doc-contents ">
 
-      <p>Create a dataset from a list of existing dimers.</p>
+        <p>Create a dataset from a list of existing dimers.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1391,7 +1390,7 @@
 
     <div class="doc doc-contents ">
 
-      <p>Create a dataset from a DESXXX dimer set.</p>
+        <p>Create a dataset from a DESXXX dimer set.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1604,7 +1603,7 @@ with <code>shape=(n_dimers,)</code> and units of [kcal/mol].</p>
 
     <div class="doc doc-contents ">
 
-      <p>Return a list of unique SMILES strings in the dataset.</p>
+        <p>Return a list of unique SMILES strings in the dataset.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1675,23 +1674,23 @@ with <code>shape=(n_dimers,)</code> and units of [kcal/mol].</p>
 
 <a href="#descent.targets.dimers.compute_dimer_energy" class="headerlink" title="Permanent link">#</a></h2>
 <div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">compute_dimer_energy</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">topology_a</span><span class="p">:</span> <span class="n"><span title="smee.TensorTopology">TensorTopology</span></span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">topology_b</span><span class="p">:</span> <span class="n"><span title="smee.TensorTopology">TensorTopology</span></span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">force_field</span><span class="p">:</span> <span class="n"><span title="smee.TensorForceField">TensorForceField</span></span><span class="p">,</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">topology_a</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="smee.TensorTopology" href="https://simonboothroyd.github.io/smee/latest/reference/#smee.TensorTopology">TensorTopology</a></span><span class="p">,</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">topology_b</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="smee.TensorTopology" href="https://simonboothroyd.github.io/smee/latest/reference/#smee.TensorTopology">TensorTopology</a></span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">force_field</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="smee.TensorForceField" href="https://simonboothroyd.github.io/smee/latest/reference/#smee.TensorForceField">TensorForceField</a></span><span class="p">,</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">coords</span><span class="p">:</span> <span class="n"><span title="torch.Tensor">Tensor</span></span><span class="p">,</span>
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="torch.Tensor">Tensor</span></span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
 
-      <p>Compute the energy of a dimer in a series of conformers.</p>
+        <p>Compute the energy of a dimer in a series of conformers.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
     <ul>
         <li class="doc-section-item field-body">
             <b><code>topology_a</code></b>
-              (<code><span title="smee.TensorTopology">TensorTopology</span></code>)
+              (<code><a class="autorefs autorefs-external" title="smee.TensorTopology" href="https://simonboothroyd.github.io/smee/latest/reference/#smee.TensorTopology">TensorTopology</a></code>)
           –
           <div class="doc-md-description">
             <p>The topology of the first monomer.</p>
@@ -1699,7 +1698,7 @@ with <code>shape=(n_dimers,)</code> and units of [kcal/mol].</p>
         </li>
         <li class="doc-section-item field-body">
             <b><code>topology_b</code></b>
-              (<code><span title="smee.TensorTopology">TensorTopology</span></code>)
+              (<code><a class="autorefs autorefs-external" title="smee.TensorTopology" href="https://simonboothroyd.github.io/smee/latest/reference/#smee.TensorTopology">TensorTopology</a></code>)
           –
           <div class="doc-md-description">
             <p>The topology of the second monomer.</p>
@@ -1707,7 +1706,7 @@ with <code>shape=(n_dimers,)</code> and units of [kcal/mol].</p>
         </li>
         <li class="doc-section-item field-body">
             <b><code>force_field</code></b>
-              (<code><span title="smee.TensorForceField">TensorForceField</span></code>)
+              (<code><a class="autorefs autorefs-external" title="smee.TensorForceField" href="https://simonboothroyd.github.io/smee/latest/reference/#smee.TensorForceField">TensorForceField</a></code>)
           –
           <div class="doc-md-description">
             <p>The force field to use.</p>
@@ -1834,14 +1833,14 @@ with <code>shape=(n_dimers,)</code> and units of [kcal/mol].</p>
 <a href="#descent.targets.dimers.predict" class="headerlink" title="Permanent link">#</a></h2>
 <div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">predict</span><span class="p">(</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">dataset</span><span class="p">:</span> <span class="n"><span title="datasets.Dataset">Dataset</span></span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">force_field</span><span class="p">:</span> <span class="n"><span title="smee.TensorForceField">TensorForceField</span></span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">topologies</span><span class="p">:</span> <span class="n">dict</span><span class="p">[</span><span class="n">str</span><span class="p">,</span> <span class="n"><span title="smee.TensorTopology">TensorTopology</span></span><span class="p">],</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">force_field</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="smee.TensorForceField" href="https://simonboothroyd.github.io/smee/latest/reference/#smee.TensorForceField">TensorForceField</a></span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">topologies</span><span class="p">:</span> <span class="n">dict</span><span class="p">[</span><span class="n">str</span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="smee.TensorTopology" href="https://simonboothroyd.github.io/smee/latest/reference/#smee.TensorTopology">TensorTopology</a></span><span class="p">],</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">tuple</span><span class="p">[</span><span class="n"><span title="torch.Tensor">Tensor</span></span><span class="p">,</span> <span class="n"><span title="torch.Tensor">Tensor</span></span><span class="p">]</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
 
-      <p>Predict the energies of each dimer in the dataset.</p>
+        <p>Predict the energies of each dimer in the dataset.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1856,7 +1855,7 @@ with <code>shape=(n_dimers,)</code> and units of [kcal/mol].</p>
         </li>
         <li class="doc-section-item field-body">
             <b><code>force_field</code></b>
-              (<code><span title="smee.TensorForceField">TensorForceField</span></code>)
+              (<code><a class="autorefs autorefs-external" title="smee.TensorForceField" href="https://simonboothroyd.github.io/smee/latest/reference/#smee.TensorForceField">TensorForceField</a></code>)
           –
           <div class="doc-md-description">
             <p>The force field to use.</p>
@@ -1864,7 +1863,7 @@ with <code>shape=(n_dimers,)</code> and units of [kcal/mol].</p>
         </li>
         <li class="doc-section-item field-body">
             <b><code>topologies</code></b>
-              (<code>dict[str, <span title="smee.TensorTopology">TensorTopology</span>]</code>)
+              (<code>dict[str, <a class="autorefs autorefs-external" title="smee.TensorTopology" href="https://simonboothroyd.github.io/smee/latest/reference/#smee.TensorTopology">TensorTopology</a>]</code>)
           –
           <div class="doc-md-description">
             <p>The topologies of each monomer. Each key should be a fully
@@ -1955,14 +1954,14 @@ mapped SMILES string.</p>
 <a href="#descent.targets.dimers.default_closure" class="headerlink" title="Permanent link">#</a></h2>
 <div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">default_closure</span><span class="p">(</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">trainable</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="descent.train.Trainable" href="../../train/#descent.train.Trainable">Trainable</a></span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">topologies</span><span class="p">:</span> <span class="n">dict</span><span class="p">[</span><span class="n">str</span><span class="p">,</span> <span class="n"><span title="smee.TensorTopology">TensorTopology</span></span><span class="p">],</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">topologies</span><span class="p">:</span> <span class="n">dict</span><span class="p">[</span><span class="n">str</span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="smee.TensorTopology" href="https://simonboothroyd.github.io/smee/latest/reference/#smee.TensorTopology">TensorTopology</a></span><span class="p">],</span>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">dataset</span><span class="p">:</span> <span class="n"><span title="datasets.Dataset">Dataset</span></span><span class="p">,</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
 
-      <p>Return a default closure function for training against dimer energies.</p>
+        <p>Return a default closure function for training against dimer energies.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1977,7 +1976,7 @@ mapped SMILES string.</p>
         </li>
         <li class="doc-section-item field-body">
             <b><code>topologies</code></b>
-              (<code>dict[str, <span title="smee.TensorTopology">TensorTopology</span>]</code>)
+              (<code>dict[str, <a class="autorefs autorefs-external" title="smee.TensorTopology" href="https://simonboothroyd.github.io/smee/latest/reference/#smee.TensorTopology">TensorTopology</a>]</code>)
           –
           <div class="doc-md-description">
             <p>The topologies of the molecules present in the dataset, with keys
@@ -2070,15 +2069,15 @@ of mapped SMILES patterns.</p>
 <a href="#descent.targets.dimers.report" class="headerlink" title="Permanent link">#</a></h2>
 <div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">report</span><span class="p">(</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">dataset</span><span class="p">:</span> <span class="n"><span title="datasets.Dataset">Dataset</span></span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">force_fields</span><span class="p">:</span> <span class="n">dict</span><span class="p">[</span><span class="n">str</span><span class="p">,</span> <span class="n"><span title="smee.TensorForceField">TensorForceField</span></span><span class="p">],</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">topologies</span><span class="p">:</span> <span class="n">dict</span><span class="p">[</span><span class="n">str</span><span class="p">,</span> <span class="n">dict</span><span class="p">[</span><span class="n">str</span><span class="p">,</span> <span class="n"><span title="smee.TensorTopology">TensorTopology</span></span><span class="p">]],</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">force_fields</span><span class="p">:</span> <span class="n">dict</span><span class="p">[</span><span class="n">str</span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="smee.TensorForceField" href="https://simonboothroyd.github.io/smee/latest/reference/#smee.TensorForceField">TensorForceField</a></span><span class="p">],</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">topologies</span><span class="p">:</span> <span class="n">dict</span><span class="p">[</span><span class="n">str</span><span class="p">,</span> <span class="n">dict</span><span class="p">[</span><span class="n">str</span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="smee.TensorTopology" href="https://simonboothroyd.github.io/smee/latest/reference/#smee.TensorTopology">TensorTopology</a></span><span class="p">]],</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">output_path</span><span class="p">:</span> <span class="n"><span title="pathlib.Path">Path</span></span><span class="p">,</span>
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
 
-      <p>Generate a report comparing the predicted and reference energies of each dimer.</p>
+        <p>Generate a report comparing the predicted and reference energies of each dimer.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -2093,7 +2092,7 @@ of mapped SMILES patterns.</p>
         </li>
         <li class="doc-section-item field-body">
             <b><code>force_fields</code></b>
-              (<code>dict[str, <span title="smee.TensorForceField">TensorForceField</span>]</code>)
+              (<code>dict[str, <a class="autorefs autorefs-external" title="smee.TensorForceField" href="https://simonboothroyd.github.io/smee/latest/reference/#smee.TensorForceField">TensorForceField</a>]</code>)
           –
           <div class="doc-md-description">
             <p>The force fields to use to predict the energies.</p>
@@ -2101,7 +2100,7 @@ of mapped SMILES patterns.</p>
         </li>
         <li class="doc-section-item field-body">
             <b><code>topologies</code></b>
-              (<code>dict[str, dict[str, <span title="smee.TensorTopology">TensorTopology</span>]]</code>)
+              (<code>dict[str, dict[str, <a class="autorefs autorefs-external" title="smee.TensorTopology" href="https://simonboothroyd.github.io/smee/latest/reference/#smee.TensorTopology">TensorTopology</a>]]</code>)
           –
           <div class="doc-md-description">
             <p>The topologies of each monomer for the given force field. Each key
@@ -2440,7 +2439,7 @@ also be present in force_fields</p>
     <script id="__config" type="application/json">{"base": "../../..", "features": ["announce.dismiss", "content.code.annotate", "content.code.copy", "content.tooltips", "navigation.footer", "navigation.indexes", "navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "search.highlight", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
     
     
-      <script src="../../../assets/javascripts/bundle.525ec568.min.js"></script>
+      <script src="../../../assets/javascripts/bundle.83f73b43.min.js"></script>
       
         <script src="../../../javascripts/mathjax.js"></script>
       
