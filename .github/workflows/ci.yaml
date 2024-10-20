@@ -24,7 +24,7 @@ jobs:
         make env
         make lint
         make test
-        make docs-build
+        make docs
         
         mamba install --name descent --yes "pydantic <2"
         make test

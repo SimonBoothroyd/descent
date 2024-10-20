@@ -84,8 +84,6 @@ plugins:
 - gen-files:
     scripts:
     - docs/scripts/gen_ref_pages.py
-#- mkdocs-jupyter:
-#    include: [ "examples/*.ipynb" ]
 - literate-nav:
     nav_file: SUMMARY.md
 - mkdocstrings:
@@ -94,8 +92,9 @@ plugins:
         paths: [descent/]
         import:
          - http://docs.openmm.org/latest/api-python/objects.inv
+         - https://simonboothroyd.github.io/smee/latest/objects.inv
         options:
-          # extensions: [ griffe_pydantic ]
+          extensions: [ griffe_pydantic ]
           docstring_options:
             ignore_init_summary: true
             returns_multiple_items: false
