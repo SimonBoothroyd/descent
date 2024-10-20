@@ -58,7 +58,7 @@ dependencies:
   - mkdocs-gen-files
   - mkdocs-literate-nav
   - mkdocstrings
-  - mkdocstrings-python
-  - griffe <1
+  - mkdocstrings-python >=1.10.8
+  - griffe-pydantic
   - black
   - mike
